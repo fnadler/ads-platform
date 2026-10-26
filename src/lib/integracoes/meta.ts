@@ -88,19 +88,39 @@ export interface ContaMeta {
   ativa: boolean;
 }
 
-/** Valida o token (chamada de leitura) e lista as contas de anúncio que ele enxerga. */
-export async function validarTokenMeta(token: string) {
+type ContaBruta = { id: string; name?: string; currency?: string; timezone_name?: string; account_status?: number };
+const CAMPOS_CONTA = "id,name,currency,timezone_name,account_status";
+const paraConta = (c: ContaBruta): ContaMeta => ({ account_id: c.id, nome: c.name ?? c.id, moeda: c.currency ?? "BRL", fuso: c.timezone_name ?? "America/Sao_Paulo", ativa: c.account_status === 1 });
+
+/** "act_123", "123" ou o link do Gerenciador (…act=123…) → "act_123". */
+export function normalizarContaMeta(v: string) {
+  const id = v.match(/act[_=](\d+)/)?.[1] ?? v.match(/^\s*(\d{6,})\s*$/)?.[1];
+  return id ? `act_${id}` : null;
+}
+
+/**
+ * Valida o token (chamada de leitura) e devolve as contas de anúncio que ele enxerga: as que a Meta lista
+ * em /me/adaccounts e as informadas à mão (lidas uma a uma, o que confirma o acesso a cada uma). Sem
+ * nenhuma conta, devolve as permissões do token para a tela explicar o que falta.
+ */
+export async function validarTokenMeta(token: string, informadas: string[] = []) {
   const eu = await get<{ id: string; name?: string }>(token, "me", { fields: "id,name" });
-  const contas = await todas<{ id: string; name?: string; currency?: string; timezone_name?: string; account_status?: number }>(token, "me/adaccounts", {
-    fields: "id,name,currency,timezone_name,account_status",
-    limit: "200",
-  });
-  return {
-    usuario: { id: eu.id, nome: eu.name ?? null },
-    contas: contas.map(
-      (c): ContaMeta => ({ account_id: c.id, nome: c.name ?? c.id, moeda: c.currency ?? "BRL", fuso: c.timezone_name ?? "America/Sao_Paulo", ativa: c.account_status === 1 }),
-    ),
-  };
+  const listadas = await todas<ContaBruta>(token, "me/adaccounts", { fields: CAMPOS_CONTA, limit: "200" });
+  const contas = new Map(listadas.map((c) => [c.id, paraConta(c)]));
+  for (const id of informadas) {
+    if (contas.has(id)) continue;
+    try {
+      contas.set(id, paraConta(await get<ContaBruta>(token, id, { fields: CAMPOS_CONTA })));
+    } catch (e) {
+      throw new ErroMeta(`Sem acesso à conta ${id}: dê ao usuário do sistema acesso a ela em Atribuir ativos → Contas de anúncios. (${(e as Error).message})`);
+    }
+  }
+  let permissoes: string[] = [];
+  if (!contas.size) {
+    const r = await get<{ data?: Array<{ permission: string; status: string }> }>(token, "me/permissions").catch(() => ({ data: [] }));
+    permissoes = (r.data ?? []).filter((p) => p.status === "granted").map((p) => p.permission);
+  }
+  return { usuario: { id: eu.id, nome: eu.name ?? null }, contas: [...contas.values()], permissoes };
 }
 
 // ───────────────────────────── Insights ─────────────────────────────

@@ -84,6 +84,13 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
               <Formulario acao={conectarMeta} rotulo="Validar e salvar">
                 {hidden}
                 <Campo rotulo="Token" name="token" type="password" autoComplete="off" placeholder="EAA…" required />
+                <Campo
+                  rotulo="ID da conta de anúncios (opcional)"
+                  name="contas"
+                  autoComplete="off"
+                  placeholder="act_1234567890"
+                  ajuda="Use se a conta não aparecer sozinha. Está no Gerenciador de Anúncios, no seletor de contas ou na URL (act=…). Várias: separe por vírgula."
+                />
               </Formulario>
             </details>
           )}

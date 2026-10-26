@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Resultado } from "@/components/Formulario";
 import { acessoOrganizacao } from "@/lib/auth/sessao";
 import { novoToken, sha256 } from "@/lib/cifra";
-import { validarTokenMeta } from "@/lib/integracoes/meta";
+import { normalizarContaMeta, validarTokenMeta } from "@/lib/integracoes/meta";
 import { validarChaveStripe } from "@/lib/integracoes/stripe";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { urlSistema } from "@/lib/url";
@@ -38,8 +38,18 @@ export async function conectarMeta(_: Resultado, dados: FormData): Promise<Resul
   if (token.length < 50) return { erro: "Cole o token completo do usuário do sistema (começa com EAA…)." };
   try {
     const { usuario, supabase } = await acessoOrganizacao(orgId, "dono");
-    const { usuario: usuarioMeta, contas } = await validarTokenMeta(token);
-    if (!contas.length) return { erro: "O token é válido, mas não enxerga nenhuma conta de anúncio. Dê ao usuário do sistema acesso à conta no Business Manager." };
+    const textoContas = String(dados.get("contas") ?? "").trim();
+    const informadas = textoContas ? textoContas.split(/[\s,;]+/).filter(Boolean).map(normalizarContaMeta) : [];
+    if (informadas.some((c) => !c)) return { erro: "ID de conta inválido. Use o número da conta (ex.: act_1234567890 ou 1234567890)." };
+    const { usuario: usuarioMeta, contas, permissoes } = await validarTokenMeta(token, informadas as string[]);
+    if (!contas.length) {
+      const semAdsRead = !permissoes.includes("ads_read");
+      return {
+        erro: semAdsRead
+          ? `O token é válido, mas não tem a permissão ads_read (tem: ${permissoes.join(", ") || "nenhuma"}). Gere um token novo marcando ads_read.`
+          : "O token é válido e tem ads_read, mas a Meta não lista nenhuma conta para ele. Confira em Atribuir ativos → Contas de anúncios se a conta foi atribuída a este usuário do sistema, ou informe o ID da conta abaixo.",
+      };
+    }
 
     const { admin, conexao } = await gravarConexao(orgId, usuario.id, "meta", "Meta", {
       status: "ativa",
