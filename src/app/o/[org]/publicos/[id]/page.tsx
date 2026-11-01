@@ -102,58 +102,60 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
                 </Aviso>
               )}
               {gestor && !travado ? (
-                <Formulario acao={salvarPublico} rotulo={p ? "Salvar" : "Criar público"} variante="peso" className="grid gap-4 sm:grid-cols-2">
+                <Formulario acao={salvarPublico} rotulo={p ? "Salvar" : "Criar público"} variante="peso" className="flex flex-col gap-4">
                   {hidden}
-                  <Campo
-                    rotulo="Nome do público"
-                    name="nome"
-                    defaultValue={p?.nome ?? ""}
-                    required
-                    className="sm:col-span-2"
-                    placeholder={tipo === "funil" ? "Ex.: Pagantes" : tipo === "site" ? "Ex.: Visitantes do site 30 dias" : "Ex.: Semelhante aos pagantes 1%"}
-                  />
-                  {tipo === "funil" && (
-                    <>
-                      <Selecao rotulo="Quem entra" name="segmento" defaultValue={String(def.segmento ?? "pagantes")} className="sm:col-span-2">
-                        {Object.entries(SEGMENTOS).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
-                          </option>
-                        ))}
-                      </Selecao>
-                      <Campo
-                        rotulo="Só quem se cadastrou nos últimos (dias)"
-                        name="dias"
-                        type="number"
-                        min={1}
-                        max={730}
-                        defaultValue={def.dias != null ? Number(def.dias) : ""}
-                        ajuda="Em branco: todos."
-                      />
-                    </>
-                  )}
-                  {tipo === "site" && <Campo rotulo="Visitaram nos últimos (dias)" name="dias" type="number" min={1} max={180} defaultValue={Number(def.dias ?? 30)} required />}
-                  {tipo === "semelhante" && (
-                    <>
-                      <Selecao rotulo="Parecido com" name="origem_publico_id" defaultValue={String(def.origem_publico_id ?? "")} required>
-                        <option value="">Escolha um público de clientes ou do site…</option>
-                        {(origens ?? []).map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.nome}
-                          </option>
-                        ))}
-                      </Selecao>
-                      <Campo
-                        rotulo="Semelhança (%)"
-                        name="percentual"
-                        type="number"
-                        min={1}
-                        max={10}
-                        defaultValue={Number(def.percentual ?? 1)}
-                        ajuda="1% = mais parecido; 10% = mais amplo."
-                      />
-                    </>
-                  )}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Campo
+                      rotulo="Nome do público"
+                      name="nome"
+                      defaultValue={p?.nome ?? ""}
+                      required
+                      className="sm:col-span-2"
+                      placeholder={tipo === "funil" ? "Ex.: Pagantes" : tipo === "site" ? "Ex.: Visitantes do site 30 dias" : "Ex.: Semelhante aos pagantes 1%"}
+                    />
+                    {tipo === "funil" && (
+                      <>
+                        <Selecao rotulo="Quem entra" name="segmento" defaultValue={String(def.segmento ?? "pagantes")} className="sm:col-span-2">
+                          {Object.entries(SEGMENTOS).map(([k, v]) => (
+                            <option key={k} value={k}>
+                              {v}
+                            </option>
+                          ))}
+                        </Selecao>
+                        <Campo
+                          rotulo="Só quem se cadastrou nos últimos (dias)"
+                          name="dias"
+                          type="number"
+                          min={1}
+                          max={730}
+                          defaultValue={def.dias != null ? Number(def.dias) : ""}
+                          ajuda="Em branco: todos."
+                        />
+                      </>
+                    )}
+                    {tipo === "site" && <Campo rotulo="Visitaram nos últimos (dias)" name="dias" type="number" min={1} max={180} defaultValue={Number(def.dias ?? 30)} required />}
+                    {tipo === "semelhante" && (
+                      <>
+                        <Selecao rotulo="Parecido com" name="origem_publico_id" defaultValue={String(def.origem_publico_id ?? "")} required>
+                          <option value="">Escolha um público de clientes ou do site…</option>
+                          {(origens ?? []).map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.nome}
+                            </option>
+                          ))}
+                        </Selecao>
+                        <Campo
+                          rotulo="Semelhança (%)"
+                          name="percentual"
+                          type="number"
+                          min={1}
+                          max={10}
+                          defaultValue={Number(def.percentual ?? 1)}
+                          ajuda="1% = mais parecido; 10% = mais amplo."
+                        />
+                      </>
+                    )}
+                  </div>
                 </Formulario>
               ) : (
                 <p className="text-sm text-ink-2">
