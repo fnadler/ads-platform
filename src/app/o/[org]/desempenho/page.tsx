@@ -1,8 +1,8 @@
-/* eslint-disable @next/next/no-img-element -- miniaturas vêm de URL assinada do Storage, que expira */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
-import { Aviso, Cartao, Tabela, Titulo } from "@/components/ui";
+import { IconeVoltar } from "@/components/Icones";
+import { Aviso, Cartao, corAnuncio, Indicador, Indicadores, MiniaturaCriativo, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { rotaOrg } from "@/lib/rotas";
@@ -103,82 +103,93 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
   const nomeCampanha = campanha ? (campanhas.get(campanha)?.nome ?? campanha) : null;
   const semDados = !linhas.length;
 
+  // Cor fixa por anúncio: posição estável (ordem do id) dentro da campanha, não a do ranking por gasto.
+  const ordemCor = new Map([...linhas].sort((a, b) => a.ad_id.localeCompare(b.ad_id)).map((l, i) => [l.ad_id, i]));
+  const roas = (receita: number, gasto: number) => (receita ? decimal(razao(receita, gasto)) : "—");
+  const destaque = "bg-accent-soft font-semibold text-ink";
+
   return (
     <>
       <Titulo
-        descricao={
+        sobrancelha={
           campanha ? (
-            <Link href={link({ campanha: null })} className="text-marca hover:underline">
-              ← Todas as campanhas
+            <Link href={link({ campanha: null })} className="inline-flex items-center gap-1 normal-case tracking-normal text-accent-text">
+              <IconeVoltar tamanho={14} /> Todas as campanhas
             </Link>
           ) : (
-            "Gasto e resultado por campanha e anúncio. Leads (Meta) é o que o Gerenciador conta; Leads (sistema), Testes e Vendas são o que chegou da sua fonte de venda com o anúncio de origem."
+            "Desempenho"
           )
         }
         acoes={
-          <div className="flex gap-1 text-sm">
+          <div role="tablist" aria-label="Período" className="flex gap-1 rounded-lg bg-sunken p-1">
             {PERIODOS.map((d) => (
-              <Link key={d} href={link({ dias: d })} className={`rounded-md px-3 py-1.5 ${d === dias ? "bg-superficie font-medium shadow-sm" : "text-suave hover:text-texto"}`}>
+              <Link
+                key={d}
+                href={link({ dias: d })}
+                role="tab"
+                aria-selected={d === dias}
+                className={`flex min-h-10 items-center rounded-md px-3.5 text-sm font-medium no-underline ${d === dias ? "bg-surface text-ink shadow-card" : "text-ink-2 hover:text-ink hover:no-underline"}`}
+              >
                 {d} dias
               </Link>
             ))}
           </div>
         }
       >
-        {nomeCampanha ?? "Desempenho"}
+        {nomeCampanha ?? "Quais anúncios trazem venda"}
       </Titulo>
 
       {semDados ? (
-        <Aviso>Sem dados no período. Confira em Sincronizações se a Meta já foi carregada.</Aviso>
+        <Vazio titulo="Sem dados no período">Confira em Sincronizações se a Meta já foi carregada, ou escolha um período maior.</Vazio>
       ) : (
-        <div className="grid gap-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-            {[
-              ["Gasto", moeda(total.gasto, org.moeda)],
-              ["Leads (Meta)", inteiro(total.leads_meta)],
-              ["Custo por lead", moeda(razao(total.gasto, total.leads_meta), org.moeda)],
-              ["Leads (sistema)", inteiro(total.leads)],
-              ["Testes", inteiro(total.testes)],
-              ["Vendas", inteiro(total.vendas)],
-              ["Custo por venda", moeda(razao(total.gasto, total.vendas), org.moeda)],
-              ["ROAS", total.receita ? decimal(razao(total.receita, total.gasto)) : "—"],
-            ].map(([rotulo, v]) => (
-              <div key={rotulo} className="rounded-lg border border-borda bg-superficie p-3">
-                <div className="text-xs text-suave">{rotulo}</div>
-                <div className="mt-1 text-lg font-semibold tabular-nums">{v}</div>
-              </div>
-            ))}
-          </div>
+        <div className="grid gap-5">
+          <Indicadores className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
+            <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
+            <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
+            <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />
+            <Indicador rotulo="Leads (sistema)" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio" />
+            <Indicador rotulo="Testes" valor={inteiro(total.testes)} detalhe={total.leads ? `${pct(razao(total.testes, total.leads), 0)} dos leads` : undefined} />
+            <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} de receita` : undefined} />
+            <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="gasto ÷ vendas" destaque />
+            <Indicador rotulo="ROAS" valor={roas(total.receita, total.gasto)} detalhe={total.receita ? `${moeda(razao(total.receita, total.gasto), org.moeda)} de volta por R$ 1` : undefined} destaque />
+          </Indicadores>
+
+          <Aviso>
+            <strong>Leads (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Leads (sistema)</strong> é o que chegou à sua fonte de venda com o anúncio de origem; é sobre ele
+            que calculamos testes, vendas e ROAS.
+          </Aviso>
 
           <Cartao>
             <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Leads (Meta)" : "Leads (sistema)"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
-            <details className="mt-2 text-xs">
-              <summary className="cursor-pointer text-suave">Ver em tabela</summary>
-              <Tabela>
-                <thead>
-                  <tr>
-                    <th>Dia</th>
-                    <th>Acumulado</th>
-                    <th>Dia anterior equivalente</th>
-                    <th>Acumulado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pontos.map((p) => (
-                    <tr key={p.rotulo}>
-                      <td>{p.rotulo}</td>
-                      <td>{inteiro(p.atual)}</td>
-                      <td>{p.rotuloAnterior}</td>
-                      <td>{inteiro(p.anterior)}</td>
+            <details className="mt-3 text-sm">
+              <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">Ver em tabela</summary>
+              <div className="mt-3 overflow-hidden rounded-md border border-line">
+                <Tabela>
+                  <thead>
+                    <tr>
+                      <th>Dia</th>
+                      <th className="text-right">Acumulado</th>
+                      <th>Dia anterior equivalente</th>
+                      <th className="text-right">Acumulado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </Tabela>
+                  </thead>
+                  <tbody className="[&_.num]:tabular-nums">
+                    {pontos.map((p) => (
+                      <tr key={p.rotulo}>
+                        <td>{p.rotulo}</td>
+                        <td className="num">{inteiro(p.atual)}</td>
+                        <td className="text-ink-2">{p.rotuloAnterior}</td>
+                        <td className="num">{inteiro(p.anterior)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Tabela>
+              </div>
             </details>
           </Cartao>
 
           {!campanha ? (
-            <Cartao titulo="Campanhas">
+            <Cartao titulo={`Campanhas · últimos ${dias} dias`} acoes={<span className="text-sm text-ink-3">Clique numa campanha para ver os anúncios</span>} rente>
               <Tabela>
                 <thead>
                   <tr>
@@ -189,20 +200,21 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                     <th className="text-right">CTR</th>
                     <th className="text-right">Leads (Meta)</th>
                     <th className="text-right">CPL</th>
-                    <th className="text-right">Leads (sistema)</th>
+                    <th className="text-right">Leads (sist.)</th>
                     <th className="text-right">Testes</th>
                     <th className="text-right">Vendas</th>
-                    <th className="text-right">ROAS</th>
+                    <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
+                    <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
                   </tr>
                 </thead>
-                <tbody className="tabular-nums [&_td:not(:first-child)]:text-right">
+                <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
                   {[...campanhas].sort(([, a], [, b]) => b.soma.gasto - a.soma.gasto).map(([id, c]) => (
                     <tr key={id}>
                       <td>
-                        <Link href={link({ campanha: id })} className="font-medium hover:text-marca">
+                        <Link href={link({ campanha: id })} className="font-medium text-ink hover:text-accent-text">
                           {c.nome}
                         </Link>
-                        <div className="text-xs text-suave">{c.anuncios} anúncio(s) com gasto</div>
+                        <div className="text-xs text-ink-3">{c.anuncios} anúncio(s) com gasto</div>
                       </td>
                       <td>{moeda(c.soma.gasto, org.moeda)}</td>
                       <td>{inteiro(c.soma.impressoes)}</td>
@@ -213,14 +225,31 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <td>{inteiro(c.soma.leads)}</td>
                       <td>{inteiro(c.soma.testes)}</td>
                       <td>{inteiro(c.soma.vendas)}</td>
-                      <td>{c.soma.receita ? decimal(razao(c.soma.receita, c.soma.gasto)) : "—"}</td>
+                      <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
+                      <td className={destaque}>{roas(c.soma.receita, c.soma.gasto)}</td>
                     </tr>
                   ))}
+                  {campanhas.size > 1 && (
+                    <tr className="font-semibold [&>td]:border-t-2 [&>td]:border-line-strong">
+                      <td>Total</td>
+                      <td>{moeda(total.gasto, org.moeda)}</td>
+                      <td>{inteiro(total.impressoes)}</td>
+                      <td>—</td>
+                      <td>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
+                      <td>{inteiro(total.leads_meta)}</td>
+                      <td>{moeda(razao(total.gasto, total.leads_meta), org.moeda)}</td>
+                      <td>{inteiro(total.leads)}</td>
+                      <td>{inteiro(total.testes)}</td>
+                      <td>{inteiro(total.vendas)}</td>
+                      <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
+                      <td className={destaque}>{roas(total.receita, total.gasto)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </Tabela>
             </Cartao>
           ) : (
-            <Cartao titulo="Anúncios">
+            <Cartao titulo="Anúncios" acoes={<span className="text-sm text-ink-3">Do cadastro à venda, por criativo</span>} rente>
               <Tabela>
                 <thead>
                   <tr>
@@ -230,26 +259,22 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                     <th className="text-right">CTR</th>
                     <th className="text-right">Leads (Meta)</th>
                     <th className="text-right">CPL</th>
-                    <th className="text-right">Leads (sistema)</th>
+                    <th className="text-right">Leads (sist.)</th>
                     <th className="text-right">Testes</th>
                     <th className="text-right">Vendas</th>
-                    <th className="text-right">Custo/venda</th>
-                    <th className="text-right">ROAS</th>
+                    <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
+                    <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
                   </tr>
                 </thead>
-                <tbody className="tabular-nums [&_td:not(:first-child)]:text-right">
+                <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
                   {[...linhas].sort((a, b) => Number(b.gasto) - Number(a.gasto)).map((l) => (
                     <tr key={l.ad_id}>
                       <td>
                         <div className="flex items-center gap-3">
-                          {l.imagem_path && urls.get(l.imagem_path) ? (
-                            <img src={urls.get(l.imagem_path)} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
-                          ) : (
-                            <div className="h-12 w-12 shrink-0 rounded bg-fundo" />
-                          )}
-                          <div>
-                            <div className="font-medium">{l.ad_name ?? l.ad_id}</div>
-                            <div className="text-xs text-suave">{l.adset_name}</div>
+                          <MiniaturaCriativo src={l.imagem_path ? urls.get(l.imagem_path) : null} cor={corAnuncio(ordemCor.get(l.ad_id) ?? 0)} className="w-11" />
+                          <div className="min-w-0">
+                            <div className="font-medium text-ink">{l.ad_name ?? l.ad_id}</div>
+                            <div className="text-xs text-ink-3">{l.adset_name}</div>
                           </div>
                         </div>
                       </td>
@@ -261,8 +286,8 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <td>{inteiro(Number(l.leads))}</td>
                       <td>{inteiro(Number(l.testes))}</td>
                       <td>{inteiro(Number(l.vendas))}</td>
-                      <td>{moeda(razao(Number(l.gasto), Number(l.vendas)), org.moeda)}</td>
-                      <td>{Number(l.receita) ? decimal(razao(Number(l.receita), Number(l.gasto))) : "—"}</td>
+                      <td className={destaque}>{moeda(razao(Number(l.gasto), Number(l.vendas)), org.moeda)}</td>
+                      <td className={destaque}>{roas(Number(l.receita), Number(l.gasto))}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -25,9 +25,11 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
 
   return (
     <>
-      <Titulo descricao="Quem acessa esta organização e com que papel.">Membros</Titulo>
+      <Titulo sobrancelha="Configurações" descricao="Quem acessa esta organização e com que papel.">
+        Membros e convites
+      </Titulo>
       <div className="grid gap-6">
-        <Cartao>
+        <Cartao titulo="Membros" rente>
           <Tabela>
             <thead>
               <tr>
@@ -41,14 +43,14 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
                 <tr key={m.usuario_id}>
                   <td>
                     {m.email}
-                    {m.usuario_id === usuario.id && <span className="text-suave"> (você)</span>}
+                    {m.usuario_id === usuario.id && <span className="text-ink-2"> (você)</span>}
                   </td>
                   <td>
                     {ehDono ? (
                       <Formulario acao={alterarPapel} rotulo="Salvar" variante="secundario" className="flex items-center gap-2">
                         <input type="hidden" name="organizacao_id" value={org.id} />
                         <input type="hidden" name="usuario_id" value={m.usuario_id} />
-                        <select name="papel" defaultValue={m.papel} className="rounded-md border border-borda bg-superficie px-2 py-1">
+                        <select name="papel" defaultValue={m.papel} className="min-h-11 rounded-md border border-line-strong bg-surface px-3">
                           {(["dono", "gestor", "leitura"] as const).map((p) => (
                             <option key={p} value={p}>
                               {ROTULO_PAPEL[p]}
@@ -96,7 +98,7 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
                       <tr key={c.id}>
                         <td>{c.email}</td>
                         <td>{ROTULO_PAPEL[c.papel as Papel]}</td>
-                        <td className="text-suave">{new Date(c.expira_em) < new Date() ? "expirado" : `até ${new Date(c.expira_em).toLocaleDateString("pt-BR")}`}</td>
+                        <td className="text-ink-2">{new Date(c.expira_em) < new Date() ? "expirado" : `até ${new Date(c.expira_em).toLocaleDateString("pt-BR")}`}</td>
                         <td className="text-right">
                           <Formulario acao={revogarConvite} rotulo="Revogar" variante="perigo">
                             <input type="hidden" name="organizacao_id" value={org.id} />

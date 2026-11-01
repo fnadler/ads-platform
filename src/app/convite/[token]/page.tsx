@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- logos estáticos de public/marca */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Formulario } from "@/components/Formulario";
@@ -45,9 +46,9 @@ export default async function Convite({ params }: PageProps<"/convite/[token]">)
           <Campo rotulo="Crie uma senha" name="senha" type="password" minLength={10} autoComplete="new-password" required ajuda="Pelo menos 10 caracteres." />
           <Campo rotulo="Repita a senha" name="confirmacao" type="password" minLength={10} autoComplete="new-password" required />
         </Formulario>
-        <p className="text-sm text-suave">
+        <p className="text-sm text-ink-2">
           Já tem conta com este e-mail?{" "}
-          <Link className="text-marca hover:underline" href={`/entrar?next=${encodeURIComponent(`/convite/${token}`)}`}>
+          <Link className="text-accent-text hover:underline" href={`/entrar?next=${encodeURIComponent(`/convite/${token}`)}`}>
             Entre
           </Link>{" "}
           e volte a este link.
@@ -56,10 +57,14 @@ export default async function Convite({ params }: PageProps<"/convite/[token]">)
     );
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-lg border border-borda bg-superficie p-6">
-        <h1 className="text-xl font-semibold">{convite ? `Convite para ${convite.organizacao}` : "Convite"}</h1>
-        {convite && <p className="mb-5 mt-1 text-sm text-suave">Papel: {ROTULO_PAPEL[convite.papel]}</p>}
+    <main className="flex flex-1 flex-col items-center justify-center gap-8 bg-bg p-6">
+      <img src="/marca/adverdad-logo.png" alt="Adverdad" className="h-8 w-auto dark:hidden" />
+      <img src="/marca/adverdad-logo-dark.png" alt="Adverdad" className="hidden h-8 w-auto dark:block" />
+      <div className="w-full max-w-md rounded-xl border border-line bg-surface p-7 shadow-card">
+        <div className="sobrancelha mb-1.5">Convite</div>
+        <h1 className="title-page text-2xl text-ink">{convite ? convite.organizacao : "Convite"}</h1>
+        {convite && <p className="mb-6 mt-1.5 text-ink-2">Papel: {ROTULO_PAPEL[convite.papel]}</p>}
+        {!convite && <div className="mb-4" />}
         {corpo}
       </div>
     </main>

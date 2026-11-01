@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Copiavel, Formulario } from "@/components/Formulario";
-import { Aviso, Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
+import { Aviso, Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { iniciarVerificacao, relerAnuncios, verificarAgora } from "@/lib/rastreio/acoes";
@@ -51,17 +51,18 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
 
   return (
     <>
-      <Titulo descricao="A campanha precisa nascer rastreada: o lead que não chega com o anúncio de origem não tem como ser recuperado depois.">Rastreio</Titulo>
+      <Titulo sobrancelha="Rastreio" descricao="A campanha precisa nascer rastreada: o lead que não chega com o anúncio de origem não tem como ser recuperado depois.">Cada clique precisa chegar com a origem</Titulo>
       <div className="grid gap-6">
         <Cartao titulo="1. Parâmetros de URL" descricao="Cole em cada anúncio, no campo “Parâmetros de URL” (seção Destino → Rastreamento). A Meta preenche os valores sozinha.">
           <Copiavel valor={PARAMETROS_META} />
-          <p className="mt-2 text-xs text-suave">
+          <p className="mt-3 text-sm text-ink-2">
             O sistema atribui pelos IDs (<code>utm_ad_id</code>, <code>utm_campaign_id</code>), nunca pelos nomes, que mudam e se repetem. Dica: configure no nível do anúncio e duplique a partir dele.
           </p>
         </Cartao>
 
         <Cartao
           titulo="2. Anúncios"
+          rente
           descricao="Todos os anúncios fora de arquivados e concluídos, inclusive os que ainda não gastaram."
           acoes={
             gestor && (
@@ -72,7 +73,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
           }
         >
           {comErro.length > 0 && (
-            <Aviso tom="erro" className="mb-4">
+            <Aviso tom="erro" className="mx-5 mb-4">
               {comErro.length} anúncio(s) ativo(s) ou em análise sem rastreio. Corrija antes de a campanha rodar.
             </Aviso>
           )}
@@ -90,8 +91,8 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
                 {avaliados.map((a) => (
                   <tr key={a.ad_id}>
                     <td>
-                      <div className="font-medium">{a.nome}</div>
-                      <div className="text-xs text-suave">
+                      <div className="font-medium text-ink">{a.nome}</div>
+                      <div className="text-xs text-ink-3">
                         {a.campaign_name} › {a.adset_name}
                       </div>
                     </td>
@@ -101,7 +102,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
                     </td>
                     <td className="text-xs">
                       {a.problemas.map((p) => (
-                        <div key={p.texto} className={p.gravidade === "erro" ? "text-erro" : "text-alerta"}>
+                        <div key={p.texto} className={p.gravidade === "erro" ? "text-err" : "text-warn"}>
                           {p.texto}
                         </div>
                       ))}
@@ -111,9 +112,11 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
               </tbody>
             </Tabela>
           ) : (
-            <p className="text-sm text-suave">Nenhum anúncio lido ainda. Conecte a Meta em Configurações e clique em “Reler na Meta agora”.</p>
+            <div className="px-5 pb-5">
+              <Vazio titulo="Nenhum anúncio lido ainda">Conecte a Meta em Configurações e clique em “Reler na Meta agora”.</Vazio>
+            </div>
           )}
-          <div className="mt-4 border-t border-borda pt-4">
+          <div className="border-t border-line p-5">
             <VerificarLinks orgId={org.id} />
           </div>
         </Cartao>
@@ -135,7 +138,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
                 <Etiqueta tom={atual.status === "ok" ? "ok" : atual.status === "problema" ? "erro" : "alerta"}>
                   {atual.status === "ok" ? "Ponta a ponta OK" : atual.status === "problema" ? "Com problema" : "Aguardando o lead de teste"}
                 </Etiqueta>
-                <span className="text-suave">
+                <span className="text-ink-2">
                   Anúncio “{(atual.esperado as { anuncio?: string }).anuncio}” · criado {dataHora(atual.criado_em, org.fuso)}
                   {atual.verificado_em && ` · verificado ${dataHora(atual.verificado_em, org.fuso)}`}
                 </span>
@@ -176,7 +179,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
                         <td className="font-mono text-xs">{c.esperado}</td>
                         <td className="font-mono text-xs">{c.recebido ?? "—"}</td>
                         <td className="text-xs">
-                          {c.ok ? <Etiqueta tom="ok">OK</Etiqueta> : <span className={c.alerta ? "text-alerta" : "text-erro"}>{c.correcao}</span>}
+                          {c.ok ? <Etiqueta tom="ok">OK</Etiqueta> : <span className={c.alerta ? "text-warn" : "text-err"}>{c.correcao}</span>}
                         </td>
                       </tr>
                     ))}
@@ -185,7 +188,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
               )}
             </div>
           ) : (
-            <p className="text-sm text-suave">Nenhum teste ainda. Depois de configurar os anúncios, crie um teste.</p>
+            <Vazio titulo="Nenhum teste ainda">Depois de configurar os anúncios, crie um teste: leva uns 3 minutos.</Vazio>
           )}
         </Cartao>
       </div>

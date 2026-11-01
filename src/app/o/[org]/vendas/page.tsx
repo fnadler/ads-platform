@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
-import { Aviso, Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
+import { Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { importarCsv } from "@/lib/vendas/acoes";
@@ -36,33 +36,33 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
 
   return (
     <>
-      <Titulo descricao="O que chegou das fontes de venda e quanto disso chega até o anúncio de origem.">Leads e vendas</Titulo>
+      <Titulo sobrancelha="Leads e vendas" descricao="O que chegou das fontes de venda e quanto disso chega até o anúncio de origem.">
+        O que chegou à fonte de venda
+      </Titulo>
       <div className="grid gap-6">
         <Cartao titulo="Cobertura de atribuição (30 dias)" descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <div className="text-2xl font-semibold">{pct(razao(Number(c.leads_com_anuncio), Number(c.leads)), 0)}</div>
-              <div className="text-sm text-suave">
-                dos leads com anúncio ({inteiro(Number(c.leads_com_anuncio))} de {inteiro(Number(c.leads))})
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold">{pct(razao(Number(c.vendas_com_anuncio), Number(c.vendas)), 0)}</div>
-              <div className="text-sm text-suave">
-                das vendas com anúncio ({inteiro(Number(c.vendas_com_anuncio))} de {inteiro(Number(c.vendas))})
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold">{pct(coberturaReceita, 0)}</div>
-              <div className="text-sm text-suave">
-                da receita com anúncio ({moeda(Number(c.receita_com_anuncio), org.moeda)} de {moeda(Number(c.receita), org.moeda)})
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-suave">Inclui vendas de clientes orgânicos e de antes da campanha: cobertura abaixo de 100% é esperada. O que importa é que os leads vindos de anúncio cheguem com o anúncio.</p>
+          <Indicadores className="sm:grid-cols-3">
+            <Indicador
+              rotulo="Leads com anúncio"
+              valor={pct(razao(Number(c.leads_com_anuncio), Number(c.leads)), 0)}
+              detalhe={`${inteiro(Number(c.leads_com_anuncio))} de ${inteiro(Number(c.leads))}`}
+            />
+            <Indicador
+              rotulo="Vendas com anúncio"
+              valor={pct(razao(Number(c.vendas_com_anuncio), Number(c.vendas)), 0)}
+              detalhe={`${inteiro(Number(c.vendas_com_anuncio))} de ${inteiro(Number(c.vendas))}`}
+            />
+            <Indicador
+              rotulo="Receita com anúncio"
+              valor={pct(coberturaReceita, 0)}
+              detalhe={`${moeda(Number(c.receita_com_anuncio), org.moeda)} de ${moeda(Number(c.receita), org.moeda)}`}
+              destaque
+            />
+          </Indicadores>
+          <p className="mt-3 text-sm text-ink-2">Inclui vendas de clientes orgânicos e de antes da campanha: cobertura abaixo de 100% é esperada. O que importa é que os leads vindos de anúncio cheguem com o anúncio.</p>
         </Cartao>
 
-        <Cartao titulo="Últimos leads">
+        <Cartao titulo="Últimos leads" rente>
           {leads?.length ? (
             <Tabela>
               <thead>
@@ -80,11 +80,11 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
                     <td className="whitespace-nowrap">{dataHora(l.criado_em, org.fuso)}</td>
                     <td className="text-xs">
                       {l.codigo_teste && <Etiqueta tom="alerta">teste de rastreio</Etiqueta>} {l.utm_source ?? "—"}
-                      {l.utm_campaign && <div className="text-suave">{l.utm_campaign}</div>}
+                      {l.utm_campaign && <div className="text-ink-2">{l.utm_campaign}</div>}
                     </td>
                     <td className="text-xs">
                       <Etiqueta tom={ATRIBUICAO[l.atribuicao].tom}>{ATRIBUICAO[l.atribuicao].rotulo}</Etiqueta>
-                      {l.ad_id && <div className="mt-1 text-suave">{nomeAnuncio.get(l.ad_id) ?? l.ad_id}</div>}
+                      {l.ad_id && <div className="mt-1 text-ink-2">{nomeAnuncio.get(l.ad_id) ?? l.ad_id}</div>}
                     </td>
                     <td>{l.teste_iniciado_em ? "sim" : ""}</td>
                     <td>{l.primeiro_pagamento_em ? "sim" : ""}</td>
@@ -93,11 +93,13 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
               </tbody>
             </Tabela>
           ) : (
-            <Aviso>Nenhum lead recebido ainda. Configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio).</Aviso>
+            <div className="px-5 pb-5">
+              <Vazio titulo="Nenhum lead recebido ainda">Configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio).</Vazio>
+            </div>
           )}
         </Cartao>
 
-        <Cartao titulo="Últimas vendas">
+        <Cartao titulo="Últimas vendas" rente>
           {vendas?.length ? (
             <Tabela>
               <thead>
@@ -112,15 +114,17 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
                 {vendas.map((v) => (
                   <tr key={`${v.origem}:${v.id_externo}`}>
                     <td className="whitespace-nowrap">{dataHora(v.ocorrida_em, org.fuso)}</td>
-                    <td className={v.tipo === "reembolso" ? "text-erro" : ""}>{moeda(Number(v.valor), v.moeda)}</td>
+                    <td className={`num whitespace-nowrap ${v.tipo === "reembolso" ? "text-err" : ""}`}>{moeda(Number(v.valor), v.moeda)}</td>
                     <td>{v.origem}</td>
-                    <td className="text-xs">{v.ad_id ? (nomeAnuncio.get(v.ad_id) ?? v.ad_id) : <span className="text-suave">sem anúncio</span>}</td>
+                    <td className="text-xs">{v.ad_id ? (nomeAnuncio.get(v.ad_id) ?? v.ad_id) : <span className="text-ink-2">sem anúncio</span>}</td>
                   </tr>
                 ))}
               </tbody>
             </Tabela>
           ) : (
-            <Aviso>Nenhuma venda ainda. Conecte o Stripe (Configurações) ou importe um CSV.</Aviso>
+            <div className="px-5 pb-5">
+              <Vazio titulo="Nenhuma venda ainda">Conecte o Stripe (Configurações) ou importe um CSV.</Vazio>
+            </div>
           )}
         </Cartao>
 

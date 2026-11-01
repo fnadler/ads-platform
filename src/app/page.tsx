@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BotaoLink, Cartao, Titulo } from "@/components/ui";
+import { BarraSimples } from "@/components/BarraSimples";
+import { BotaoLink, Cartao, Titulo, Vazio } from "@/components/ui";
 import { ehAdminPlataforma, exigirUsuario } from "@/lib/auth/sessao";
 import { rotaOrg } from "@/lib/rotas";
 import { criarClienteServidor } from "@/lib/supabase/servidor";
@@ -20,24 +21,32 @@ export default async function Inicio() {
   if (orgs.length === 1 && !admin) redirect(rotaOrg(orgs[0].slug));
 
   return (
-    <main className="mx-auto w-full max-w-3xl p-6">
-      <Titulo acoes={admin && <BotaoLink href="/admin">Administração</BotaoLink>}>Suas organizações</Titulo>
-      <Cartao>
+    <>
+      <BarraSimples />
+      <main className="mx-auto w-full max-w-3xl px-[clamp(16px,3vw,36px)] py-8">
+      <Titulo sobrancelha="Organizações" acoes={admin && <BotaoLink href="/admin" variante="secundario">Administração</BotaoLink>}>
+        Suas organizações
+      </Titulo>
+      <Cartao rente>
         {orgs.length ? (
-          <ul className="divide-y divide-borda">
+          <ul>
             {orgs.map((o) => (
-              <li key={o.slug}>
-                <Link href={rotaOrg(o.slug)} className="flex items-center justify-between py-3 hover:text-marca">
-                  <span className="font-medium">{o.nome}</span>
-                  <span className="text-sm text-suave">{o.papel}</span>
+              <li key={o.slug} className="border-t border-line first:border-t-0">
+                <Link href={rotaOrg(o.slug)} className="flex min-h-14 items-center gap-3 px-5 py-3 text-ink no-underline hover:bg-surface-2 hover:no-underline">
+                  <span className="grid size-9 place-items-center rounded-md bg-sunken text-xs font-bold">{o.nome.slice(0, 2).toUpperCase()}</span>
+                  <span className="flex-1 font-semibold">{o.nome}</span>
+                  <span className="text-sm capitalize text-ink-3">{o.papel}</span>
                 </Link>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-suave">Você ainda não faz parte de nenhuma organização. Peça um convite a quem administra a conta.</p>
+          <div className="p-5">
+            <Vazio titulo="Nenhuma organização ainda">Peça um convite a quem administra a conta.</Vazio>
+          </div>
         )}
       </Cartao>
-    </main>
+      </main>
+    </>
   );
 }

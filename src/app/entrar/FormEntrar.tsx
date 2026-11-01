@@ -43,14 +43,25 @@ export function FormEntrar({ next, erroInicial }: { next?: string; erroInicial?:
 
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4">
+      <div role="tablist" aria-label="Forma de entrar" className="grid grid-cols-2 gap-1 rounded-lg bg-sunken p-1">
+        {(["senha", "link"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={modo === m}
+            onClick={() => setModo(m)}
+            className={`min-h-10 rounded-md text-sm font-medium transition-colors ${modo === m ? "bg-surface text-ink shadow-card" : "text-ink-2 hover:text-ink"}`}
+          >
+            {m === "senha" ? "E-mail e senha" : "Link por e-mail"}
+          </button>
+        ))}
+      </div>
       <Campo rotulo="E-mail" name="email" type="email" autoComplete="email" required />
       {modo === "senha" && <Campo rotulo="Senha" name="senha" type="password" autoComplete="current-password" required />}
-      <Botao type="submit" disabled={enviando}>
+      <Botao type="submit" disabled={enviando} className="min-h-12">
         {enviando ? "Entrando…" : modo === "senha" ? "Entrar" : "Enviar link de acesso"}
       </Botao>
-      <button type="button" className="text-sm text-marca hover:underline" onClick={() => setModo(modo === "senha" ? "link" : "senha")}>
-        {modo === "senha" ? "Prefiro receber um link por e-mail" : "Entrar com senha"}
-      </button>
       {erro && <Aviso tom="erro">{erro}</Aviso>}
       {mensagem && <Aviso tom="ok">{mensagem}</Aviso>}
     </form>

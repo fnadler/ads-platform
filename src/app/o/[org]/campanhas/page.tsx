@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Formulario } from "@/components/Formulario";
-import { Aviso, Campo, Cartao, Etiqueta, Tabela, Titulo } from "@/components/ui";
+import { Aviso, Campo, Cartao, Etiqueta, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { criarRascunho } from "@/lib/publicacao/acoes";
@@ -22,8 +22,8 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
 
   return (
     <>
-      <Titulo descricao="Monte a campanha aqui e o sistema cria tudo na Meta, já com o rastreio certo. Tudo nasce pausado: você confere no Gerenciador e ativa quando quiser.">
-        Campanhas
+      <Titulo sobrancelha="Campanhas" descricao="Monte a campanha aqui e o sistema cria tudo na Meta, já com o rastreio certo. Tudo nasce pausado: você confere no Gerenciador e ativa quando quiser.">
+        Monte aqui, nós criamos na Meta
       </Titulo>
       <div className="grid gap-6">
         {!pronto && (
@@ -37,14 +37,14 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
         )}
         {temPapel(papel, "gestor") && (
           <Cartao titulo="Nova campanha" descricao="Modelo: Cadastro no site. O sistema fixa objetivo, destino, otimização, atribuição e Parâmetros de URL; você escolhe verba, datas, público e criativos.">
-            <Formulario acao={criarRascunho} rotulo="Começar" className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Formulario acao={criarRascunho} rotulo="Nova campanha" variante="peso" className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
               <input type="hidden" name="organizacao_id" value={org.id} />
               <input type="hidden" name="slug" value={slug} />
               <Campo rotulo="Nome da campanha" name="nome" placeholder="Ex.: Cadastro Loja | Ganchos A1 | Nov26" required />
             </Formulario>
           </Cartao>
         )}
-        <Cartao titulo="Campanhas do assistente">
+        <Cartao titulo="Campanhas do assistente" rente>
           {campanhas?.length ? (
             <Tabela>
               <thead>
@@ -58,7 +58,7 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
                 {campanhas.map((c) => (
                   <tr key={c.id}>
                     <td>
-                      <Link href={rotaOrg(slug, `/campanhas/${c.id}`)} className="font-medium hover:text-marca">
+                      <Link href={rotaOrg(slug, `/campanhas/${c.id}`)} className="font-medium text-ink hover:text-accent-text">
                         {c.nome}
                       </Link>
                     </td>
@@ -71,7 +71,9 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
               </tbody>
             </Tabela>
           ) : (
-            <p className="text-sm text-suave">Nenhuma campanha ainda.</p>
+            <div className="p-5">
+              <Vazio titulo="Nenhuma campanha ainda">Dê um nome acima e clique em “Nova campanha”: o modelo Cadastro no site já vem preenchido.</Vazio>
+            </div>
           )}
         </Cartao>
       </div>

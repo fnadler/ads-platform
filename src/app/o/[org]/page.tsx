@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { Cartao, Etiqueta, Titulo } from "@/components/ui";
+import { IconeSeta } from "@/components/Icones";
+import { BotaoLink, Etiqueta, Titulo } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { avaliarParametros } from "@/lib/rastreio/regras";
@@ -38,26 +38,81 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
     { ok: (leads ?? 0) > 0, titulo: "Leads chegando", detalhe: `${leads ?? 0} lead(s), ${vendas ?? 0} venda(s)${ultimoLead ? ` · último ${dataHora(ultimoLead.recebido_em, org.fuso)}` : ""}`, href: r("/vendas") },
   ];
   const prontos = passos.filter((p) => p.ok).length;
+  const proximo = passos.find((p) => !p.ok);
+  const ROTULO_ACAO: Record<string, string> = {
+    "/configuracoes": "Abrir Configurações",
+    "/rastreio": "Abrir Rastreio",
+    "/sincronizacoes": "Ver Sincronizações",
+    "/vendas": "Ver Leads e vendas",
+  };
+  const acao = (href: string) => ROTULO_ACAO[href.replace(r(""), "")] ?? "Abrir";
+  const faltam = passos.length - prontos;
 
   return (
     <>
-      <Titulo descricao="Saiba quais anúncios trazem venda, não só conversa, e o que fazer a seguir.">{org.nome}</Titulo>
-      <Cartao titulo="Pronto para a campanha?" descricao={`${prontos} de ${passos.length} passos concluídos. O rastreio precisa estar certo antes de a campanha começar: atribuição que não foi capturada não se recupera.`}>
-        <ol className="divide-y divide-borda">
-          {passos.map((p, i) => (
-            <li key={p.titulo}>
-              <Link href={p.href} className="flex items-center gap-3 py-3 hover:text-marca">
-                <span className="w-5 text-sm text-suave">{i + 1}.</span>
-                <span className="flex-1">
-                  <span className="font-medium">{p.titulo}</span>
-                  <span className="block text-sm text-suave">{p.detalhe}</span>
-                </span>
-                <Etiqueta tom={p.ok ? "ok" : "alerta"}>{p.ok ? "Feito" : "Falta"}</Etiqueta>
-              </Link>
-            </li>
-          ))}
+      <Titulo
+        sobrancelha="Início"
+        descricao={
+          faltam
+            ? `${faltam === 1 ? "Falta 1 passo" : `Faltam ${faltam} passos`}. O rastreio precisa estar certo antes de a campanha começar.`
+            : "Tudo pronto: a campanha está rastreada do anúncio à venda."
+        }
+        acoes={
+          <div className="flex flex-col items-end gap-2">
+            <span className="text-sm font-semibold text-ink">
+              <span className="num-display text-3xl">{prontos}</span> de {passos.length} prontos
+            </span>
+            <div className="flex gap-1" aria-hidden="true">
+              {passos.map((p) => (
+                <span key={p.titulo} className={`h-1.5 w-8 rounded-full ${p.ok ? "bg-ok" : "bg-line-strong"}`} />
+              ))}
+            </div>
+          </div>
+        }
+      >
+        Pronto para a campanha?
+      </Titulo>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+        <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
+          {passos.map((p, i) => {
+            const atual = p === proximo;
+            return (
+              <li key={p.titulo} className={`flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line px-5 py-4 first:border-t-0 ${atual ? "bg-accent-soft" : ""}`}>
+                <span className={`num-display w-6 text-[28px] leading-none ${p.ok ? "text-line-strong" : "text-ink"}`}>{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-ink">{p.titulo}</span>
+                    <Etiqueta tom={p.ok ? "ok" : atual ? "alerta" : "info"}>{p.ok ? "Feito" : "Falta"}</Etiqueta>
+                  </div>
+                  <p className="mt-1 text-sm text-ink-2">{p.detalhe}</p>
+                </div>
+                <BotaoLink href={p.href} variante={atual ? "primario" : "secundario"} className="max-sm:w-full">
+                  {acao(p.href)}
+                  <IconeSeta tamanho={16} />
+                </BotaoLink>
+              </li>
+            );
+          })}
         </ol>
-      </Cartao>
+        <aside className="flex flex-col gap-4 rounded-lg bg-chrome p-6 text-chrome-ink">
+          <span className="sobrancelha !text-chrome-ink-2">Por que isso importa</span>
+          <p className="text-xl font-bold leading-tight tracking-[-0.01em]">Atribuição que não foi capturada não se recupera.</p>
+          <p className="text-sm text-chrome-ink-2">
+            Se um anúncio roda sem parâmetros ou a venda não chega com a origem, aquele dinheiro fica sem resposta para sempre. Feche os passos antes de ativar a campanha.
+          </p>
+          {proximo ? (
+            <BotaoLink href={proximo.href} variante="peso" className="mt-2 justify-start">
+              Próximo: {proximo.titulo}
+              <IconeSeta tamanho={16} />
+            </BotaoLink>
+          ) : (
+            <BotaoLink href={r("/desempenho")} variante="peso" className="mt-2 justify-start">
+              Ver Desempenho
+              <IconeSeta tamanho={16} />
+            </BotaoLink>
+          )}
+        </aside>
+      </div>
     </>
   );
 }

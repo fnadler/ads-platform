@@ -28,13 +28,13 @@ export function VerificarLinks({ orgId }: { orgId: string }) {
           {pendente ? "Abrindo as páginas…" : "Verificar páginas de destino"}
         </Botao>
       </div>
-      {erro && <p className="text-sm text-erro">{erro}</p>}
-      {links && !links.length && <p className="text-sm text-suave">Nenhuma página de destino nos anúncios.</p>}
+      {erro && <p className="text-sm text-err">{erro}</p>}
+      {links && !links.length && <p className="text-sm text-ink-2">Nenhuma página de destino nos anúncios.</p>}
       {links?.map((l) => (
         <div key={l.url} className="flex items-center gap-2 text-sm">
           <Etiqueta tom={l.status && l.status < 400 ? "ok" : "erro"}>{l.status ?? "falhou"}</Etiqueta>
           <span className="truncate">{l.url}</span>
-          {(!l.status || l.status >= 400) && <span className="text-xs text-erro">Link quebrado: corrija o destino do anúncio. {l.erro}</span>}
+          {(!l.status || l.status >= 400) && <span className="text-xs text-err">Link quebrado: corrija o destino do anúncio. {l.erro}</span>}
         </div>
       ))}
     </div>

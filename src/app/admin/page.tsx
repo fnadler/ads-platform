@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Formulario } from "@/components/Formulario";
+import { BarraSimples } from "@/components/BarraSimples";
 import { Campo, Cartao, Tabela, Titulo } from "@/components/ui";
 import { ehAdminPlataforma, exigirUsuario } from "@/lib/auth/sessao";
 import { criarOrganizacao } from "@/lib/organizacoes/acoes";
@@ -18,16 +19,20 @@ export default async function Admin() {
   const { data: orgs } = await supabase.from("organizacoes").select("id, nome, slug, plano, criado_em").order("criado_em");
 
   return (
-    <main className="mx-auto w-full max-w-4xl p-6">
-      <Titulo descricao="Crie a organização do cliente; você entra como dono e convida as pessoas dele.">Administração</Titulo>
+    <>
+      <BarraSimples />
+      <main className="mx-auto w-full max-w-4xl px-[clamp(16px,3vw,36px)] py-8">
+      <Titulo sobrancelha="Administração da plataforma" descricao="Crie a organização do cliente; você entra como dono e convida as pessoas dele.">
+        Organizações
+      </Titulo>
       <div className="grid gap-6">
         <Cartao titulo="Nova organização">
-          <Formulario acao={criarOrganizacao} rotulo="Criar organização" className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Formulario acao={criarOrganizacao} rotulo="Criar organização" variante="peso" className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
             <Campo rotulo="Nome" name="nome" placeholder="GN Coleciona" required />
             <Campo rotulo="Endereço" name="slug" placeholder="gn-coleciona" pattern="[a-z0-9][a-z0-9\-]{1,39}" required ajuda="Aparece na URL: /o/gn-coleciona" />
           </Formulario>
         </Cartao>
-        <Cartao titulo="Organizações">
+        <Cartao titulo="Organizações" rente>
           <Tabela>
             <thead>
               <tr>
@@ -41,7 +46,7 @@ export default async function Admin() {
               {(orgs ?? []).map((o) => (
                 <tr key={o.id}>
                   <td>
-                    <Link className="font-medium hover:text-marca" href={rotaOrg(o.slug)}>
+                    <Link className="font-medium text-ink hover:text-accent-text" href={rotaOrg(o.slug)}>
                       {o.nome}
                     </Link>
                   </td>
@@ -54,6 +59,7 @@ export default async function Admin() {
           </Tabela>
         </Cartao>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

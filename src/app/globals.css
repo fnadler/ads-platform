@@ -7,23 +7,6 @@
   --font-mono: var(--fonte-mono), "JetBrains Mono", ui-monospace, monospace;
 }
 
-/* Nomes de cor usados nas telas antes do redesenho, como apelidos dos tokens do Adverdad (tokens.css).
-   Assim toda tela herda a paleta e o tema escuro; as telas redesenhadas usam os nomes novos. */
-@theme inline {
-  --color-fundo: var(--color-bg);
-  --color-superficie: var(--color-surface);
-  --color-texto: var(--color-ink);
-  --color-suave: var(--color-ink-2);
-  --color-borda: var(--color-line);
-  --color-marca: var(--color-accent);
-  --color-marca-texto: var(--color-on-accent);
-  --color-alerta: var(--color-warn);
-  --color-erro: var(--color-err);
-  --color-serie-atual: var(--color-accent);
-  --color-serie-anterior: var(--color-prev);
-  --color-grade: var(--color-line);
-}
-
 @layer base {
   body {
     background: var(--color-bg);

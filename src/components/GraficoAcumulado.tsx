@@ -46,7 +46,7 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
     <figure className="flex flex-col gap-2">
       <figcaption className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="font-medium">{titulo}</span>
-        <span className="flex gap-4 text-xs text-suave">
+        <span className="flex gap-4 text-xs text-ink-2">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-0.5 w-4 rounded bg-accent" /> Últimos 7 dias
           </span>
@@ -108,8 +108,8 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-0.5 w-3 bg-accent" /> {p.rotulo}: <strong>{p.atual.toLocaleString("pt-BR")}</strong>
             </div>
-            <div className="flex items-center gap-1.5 text-suave">
-              <span className="inline-block w-3 border-t-2 border-dashed border-prev" /> {p.rotuloAnterior}: <strong className="text-texto">{p.anterior.toLocaleString("pt-BR")}</strong>
+            <div className="flex items-center gap-1.5 text-ink-2">
+              <span className="inline-block w-3 border-t-2 border-dashed border-prev" /> {p.rotuloAnterior}: <strong className="text-ink">{p.anterior.toLocaleString("pt-BR")}</strong>
             </div>
           </div>
         )}

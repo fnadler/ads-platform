@@ -1,10 +1,10 @@
-/* eslint-disable @next/next/no-img-element -- prévias vêm de URL assinada do Storage, que expira */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AtualizarSozinho } from "@/components/AtualizarSozinho";
 import { Formulario } from "@/components/Formulario";
-import { Aviso, Campo, Cartao, Etiqueta, Selecao, Tabela, Titulo } from "@/components/ui";
+import { IconeExterno, IconeVoltar } from "@/components/Icones";
+import { Aviso, Campo, Cartao, classeAreaTexto, corAnuncio, Etiqueta, MiniaturaCriativo, Selecao, Tabela, Titulo } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, moeda } from "@/lib/formato";
 import {
@@ -34,7 +34,6 @@ const SITUACAO_CRIATIVO: Record<string, string> = {
   erro: "erro",
 };
 
-const area = "rounded-md border border-borda bg-superficie px-3 py-2 text-sm outline-none focus:border-marca";
 
 export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas/[id]">) {
   const { org: slug, id } = await params;
@@ -75,9 +74,9 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
     <>
       {["criando", "ativando"].includes(c.status) && <AtualizarSozinho />}
       <Titulo
-        descricao={
-          <Link href={rotaOrg(slug, "/campanhas")} className="text-marca hover:underline">
-            ← Campanhas
+        sobrancelha={
+          <Link href={rotaOrg(slug, "/campanhas")} className="inline-flex items-center gap-1 normal-case tracking-normal text-accent-text">
+            <IconeVoltar tamanho={14} /> Campanhas
           </Link>
         }
         acoes={<Etiqueta tom={SITUACAO_CAMPANHA[c.status].tom}>{SITUACAO_CAMPANHA[c.status].rotulo}</Etiqueta>}
@@ -103,19 +102,19 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
           >
             <div className="flex flex-col gap-4 text-sm">
               {linkGerenciador && (
-                <a href={linkGerenciador} target="_blank" rel="noreferrer" className="text-marca hover:underline">
-                  Abrir no Gerenciador de Anúncios ↗
+                <a href={linkGerenciador} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 self-start font-medium text-accent-text">
+                  Abrir no Gerenciador de Anúncios <IconeExterno tamanho={15} />
                 </a>
               )}
-              <p className="text-suave">
+              <p className="text-ink-2">
                 Depois da análise, confira o rastreio em{" "}
-                <Link href={rotaOrg(slug, "/rastreio")} className="text-marca hover:underline">
+                <Link href={rotaOrg(slug, "/rastreio")}>
                   Rastreio
                 </Link>{" "}
                 (“Reler na Meta agora”) e faça o teste de ponta a ponta.
               </p>
               {c.status === "criada" && gestor && (
-                <Formulario acao={ativarCampanha} rotulo="Ativar campanha" className="flex flex-col gap-2 border-t border-borda pt-4">
+                <Formulario acao={ativarCampanha} rotulo="Ativar campanha" variante="peso" className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">
                   {hidden}
                   <p>
                     Ativar liga os anúncios, o conjunto e a campanha. O orçamento de <strong>{orcamento}</strong> passa a ser gasto a partir do início programado.
@@ -157,33 +156,33 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 <input type="checkbox" name="publico_advantage" defaultChecked={r.publico_advantage !== false} className="mt-1" />
                 <span>
                   <span className="font-medium">Deixar a Meta ampliar o público (Advantage+)</span>
-                  <span className="block text-xs text-suave">Recomendado. A idade vira sugestão e a Meta busca quem tem mais chance de se cadastrar. Público: Brasil.</span>
+                  <span className="block text-xs text-ink-2">Recomendado. A idade vira sugestão e a Meta busca quem tem mais chance de se cadastrar. Público: Brasil.</span>
                 </span>
               </label>
             </Formulario>
           ) : (
             <dl className="grid gap-2 text-sm sm:grid-cols-3">
               <div>
-                <dt className="text-suave">Orçamento</dt>
+                <dt className="text-ink-2">Orçamento</dt>
                 <dd>{orcamento}</dd>
               </div>
               <div>
-                <dt className="text-suave">Otimizar para</dt>
+                <dt className="text-ink-2">Otimizar para</dt>
                 <dd>{EVENTOS[String(r.evento) as keyof typeof EVENTOS] ?? String(r.evento)}</dd>
               </div>
               <div>
-                <dt className="text-suave">Início / fim</dt>
+                <dt className="text-ink-2">Início / fim</dt>
                 <dd>
                   {String(r.inicio).replace("T", " ")}
                   {r.fim ? ` → ${String(r.fim).replace("T", " ")}` : ""}
                 </dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-suave">Destino</dt>
+                <dt className="text-ink-2">Destino</dt>
                 <dd className="truncate">{String(r.url_destino)}</dd>
               </div>
               <div>
-                <dt className="text-suave">Público</dt>
+                <dt className="text-ink-2">Público</dt>
                 <dd>
                   Brasil, {String(r.idade_min)}–{String(r.idade_max)}
                   {r.publico_advantage !== false ? ", Advantage+" : ""}
@@ -200,18 +199,10 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
           <div className="flex flex-col gap-4">
             {aberta && <EnviarArquivos orgId={org.id} campanhaId={id} />}
             {lista.map((x, i) => (
-              <div key={x.id} className="grid gap-4 border-t border-borda pt-4 sm:grid-cols-[140px_1fr]">
+              <div key={x.id} className="grid gap-4 border-t border-line pt-5 sm:grid-cols-[140px_1fr]">
                 <div className="flex flex-col gap-1">
-                  {previa.get(x.arquivo_path) ? (
-                    x.tipo === "video" ? (
-                      <video src={previa.get(x.arquivo_path)} className="aspect-[9/16] w-full rounded bg-fundo object-cover" muted controls preload="metadata" />
-                    ) : (
-                      <img src={previa.get(x.arquivo_path)} alt="" className="w-full rounded bg-fundo object-cover" />
-                    )
-                  ) : (
-                    <div className="aspect-[9/16] w-full rounded bg-fundo" />
-                  )}
-                  {c.status !== "rascunho" && <span className={`text-xs ${x.status === "erro" ? "text-erro" : "text-suave"}`}>{x.erro ?? SITUACAO_CRIATIVO[x.status]}</span>}
+                  <MiniaturaCriativo src={previa.get(x.arquivo_path)} tipo={x.tipo} cor={corAnuncio(i)} controles className="w-full" />
+                  {c.status !== "rascunho" && <span className={`text-xs ${x.status === "erro" ? "text-err" : "text-ink-2"}`}>{x.erro ?? SITUACAO_CRIATIVO[x.status]}</span>}
                 </div>
                 {aberta && !x.meta_creative_id ? (
                   <div className="flex flex-col gap-2">
@@ -221,7 +212,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                       <Campo rotulo={`Anúncio ${i + 1}: nome`} name="nome" defaultValue={x.nome} required />
                       <label className="flex flex-col gap-1 text-sm">
                         <span className="font-medium">Texto principal</span>
-                        <textarea name="texto" defaultValue={x.texto} rows={4} className={area} />
+                        <textarea name="texto" defaultValue={x.texto} rows={4} className={classeAreaTexto} />
                       </label>
                       <div className="grid gap-2 sm:grid-cols-2">
                         <Campo rotulo="Título" name="titulo" defaultValue={x.titulo} />
@@ -250,7 +241,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 ) : (
                   <div className="text-sm">
                     <div className="font-medium">{x.nome}</div>
-                    <p className="mt-1 whitespace-pre-line text-suave">{x.texto}</p>
+                    <p className="mt-1 whitespace-pre-line text-ink-2">{x.texto}</p>
                     <p className="mt-1">
                       <strong>{x.titulo}</strong> · {CHAMADAS[x.chamada as keyof typeof CHAMADAS] ?? x.chamada}
                     </p>
@@ -258,7 +249,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 )}
               </div>
             ))}
-            {!lista.length && !aberta && <p className="text-sm text-suave">Sem criativos.</p>}
+            {!lista.length && !aberta && <p className="text-sm text-ink-2">Sem criativos.</p>}
           </div>
         </Cartao>
 
@@ -288,6 +279,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                   <Formulario
                     acao={enviarParaMeta}
                     rotulo={c.meta_campaign_id ? "Tentar de novo" : "Criar na Meta (pausada)"}
+                    variante="peso"
                     confirmar={c.meta_campaign_id ? "Continuar a criação de onde parou?" : "Criar a campanha na Meta? Ela fica pausada até você ativar."}
                   >
                     {hidden}
@@ -295,7 +287,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 )}
               </div>
               {!c.meta_campaign_id && (
-                <div className="border-t border-borda pt-4">
+                <div className="border-t border-line pt-4">
                   <Formulario acao={excluirRascunho} rotulo="Excluir rascunho" variante="perigo" confirmar="Excluir este rascunho e os arquivos enviados?">
                     {hidden}
                     <input type="hidden" name="slug" value={slug} />
@@ -327,7 +319,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                         {o.caminho}
                       </td>
                       <td className="text-xs">
-                        {resp?.error ? <span className="text-erro">{resp.error.error_user_msg ?? resp.error.message}</span> : resp?.id ? `criado ${resp.id}` : `HTTP ${o.status_http}`}
+                        {resp?.error ? <span className="text-err">{resp.error.error_user_msg ?? resp.error.message}</span> : resp?.id ? `criado ${resp.id}` : `HTTP ${o.status_http}`}
                       </td>
                     </tr>
                   );

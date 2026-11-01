@@ -37,8 +37,8 @@ export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: strin
       {conexao?.ultimo_erro && <Aviso tom="erro" className="mb-4">{conexao.ultimo_erro}</Aviso>}
       {dono && (
         <details className="mb-4" open={!conexao}>
-          <summary className="cursor-pointer text-sm font-medium">{conexao ? "Trocar o token de publicação" : "Conectar"}</summary>
-          <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-suave">
+          <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">{conexao ? "Trocar o token de publicação" : "Conectar"}</summary>
+          <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-ink-2">
             <li>No Business Manager, no usuário do sistema: em Atribuir ativos, dê à conta de anúncios a permissão “Gerenciar campanhas” e atribua a Página do Facebook (e a conta do Instagram) da marca.</li>
             <li>
               “Gerar token” com o mesmo app, validade “Nunca”, marcando <code>ads_management</code>, <code>ads_read</code>, <code>pages_show_list</code>,{" "}
@@ -101,19 +101,19 @@ export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: strin
           ) : (
             <dl className="grid gap-1 sm:grid-cols-2">
               <div>
-                <dt className="text-suave">Página</dt>
+                <dt className="text-ink-2">Página</dt>
                 <dd>{config.page_nome ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-suave">Instagram</dt>
+                <dt className="text-ink-2">Instagram</dt>
                 <dd>{config.instagram_nome ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-suave">Conjunto de dados</dt>
+                <dt className="text-ink-2">Conjunto de dados</dt>
                 <dd>{config.pixel_nome ? `${config.pixel_nome} (${config.pixel_id})` : "—"}</dd>
               </div>
               <div>
-                <dt className="text-suave">Teto de verba diária</dt>
+                <dt className="text-ink-2">Teto de verba diária</dt>
                 <dd>{Number(config.teto_verba_diaria).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</dd>
               </div>
             </dl>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Copiavel } from "@/components/Formulario";
 import { Formulario } from "@/components/Formulario";
-import { Aviso, Campo, Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
+import { IconeSeta } from "@/components/Icones";
+import { Aviso, BotaoLink, Campo, Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { alterarConta, conectarMeta, conectarStripe, gerarTokenWebhook, importarHistoricoStripe, removerConexao, salvarMetricas } from "@/lib/conexoes/acoes";
 import { dataHora, decimal } from "@/lib/formato";
@@ -52,14 +52,16 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
   return (
     <>
       <Titulo
+        sobrancelha="Configurações"
         descricao="Conexões com a Meta e com a fonte de venda, e o que conta como lead e compra."
         acoes={
-          <Link className="text-sm text-marca hover:underline" href={rotaOrg(slug, "/configuracoes/membros")}>
-            Membros →
-          </Link>
+          <BotaoLink variante="secundario" href={rotaOrg(slug, "/configuracoes/membros")}>
+            Membros e convites
+            <IconeSeta tamanho={16} />
+          </BotaoLink>
         }
       >
-        Configurações
+        Conexões e pessoas
       </Titulo>
       <div className="grid gap-6">
         <Cartao
@@ -69,14 +71,14 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
         >
           {meta?.ultimo_erro && <Aviso tom="erro" className="mb-4">{meta.ultimo_erro}</Aviso>}
           {meta && (
-            <p className="mb-4 text-sm text-suave">
-              Usuário do sistema: <strong className="text-texto">{meta.config.usuario_nome ?? meta.config.usuario_id}</strong> · validado em {dataHora(meta.validado_em, org.fuso)}
+            <p className="mb-4 text-sm text-ink-2">
+              Usuário do sistema: <strong className="text-ink">{meta.config.usuario_nome ?? meta.config.usuario_id}</strong> · validado em {dataHora(meta.validado_em, org.fuso)}
             </p>
           )}
           {dono && (
             <details className="mb-4" open={!meta}>
-              <summary className="cursor-pointer text-sm font-medium">{meta ? "Trocar o token" : "Conectar com token de usuário do sistema"}</summary>
-              <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-suave">
+              <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">{meta ? "Trocar o token" : "Conectar com token de usuário do sistema"}</summary>
+              <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-ink-2">
                 <li>No Business Manager: Configurações do negócio → Usuários → Usuários do sistema → Adicionar (função Funcionário).</li>
                 <li>Em “Atribuir ativos”, dê acesso à conta de anúncios (permissão “Ver desempenho” basta).</li>
                 <li>“Gerar novo token”, escolha o app, marque <code>ads_read</code> e validade “Nunca”.</li>
@@ -110,9 +112,9 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
                   <tr key={c.account_id}>
                     <td>
                       <div className="font-medium">{c.nome}</div>
-                      <div className="font-mono text-xs text-suave">{c.account_id}</div>
+                      <div className="font-mono text-xs text-ink-2">{c.account_id}</div>
                     </td>
-                    <td className="text-suave">
+                    <td className="text-ink-2">
                       {c.moeda} · {c.fuso}
                     </td>
                     <td colSpan={2}>
@@ -120,8 +122,8 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
                         <Formulario acao={alterarConta} rotulo={c.ativa ? "Salvar" : "Ligar e carregar"} variante={c.ativa ? "secundario" : "primario"} className="flex flex-wrap items-center gap-2">
                           {hidden}
                           <input type="hidden" name="account_id" value={c.account_id} />
-                          <input type="date" name="sincronizar_desde" defaultValue={c.sincronizar_desde} className="rounded-md border border-borda bg-superficie px-2 py-1" />
-                          <select name="ativa" defaultValue={c.ativa ? "sim" : "nao"} className="rounded-md border border-borda bg-superficie px-2 py-1">
+                          <input type="date" name="sincronizar_desde" defaultValue={c.sincronizar_desde} className="min-h-11 rounded-md border border-line-strong bg-surface px-3" />
+                          <select name="ativa" defaultValue={c.ativa ? "sim" : "nao"} className="min-h-11 rounded-md border border-line-strong bg-surface px-3">
                             <option value="sim">Ligada</option>
                             <option value="nao">Desligada</option>
                           </select>
@@ -147,7 +149,7 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
             <div className="mb-4 flex flex-col gap-1 text-sm">
               <span className="font-medium">Endereço do webhook (cole no Stripe):</span>
               <Copiavel valor={`${base}/api/webhook/stripe/${stripe.id}`} />
-              <span className="text-xs text-suave">
+              <span className="text-xs text-ink-2">
                 Eventos: <code>invoice.paid</code>, <code>customer.subscription.created</code>, <code>charge.refunded</code>. Campo do lead no metadata da assinatura:{" "}
                 <code>{stripe.config.campo_lead}</code>
                 {stripe.config.modo && ` · chave de ${stripe.config.modo}`}
@@ -156,8 +158,8 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
           )}
           {dono && (
             <details open={!stripe || stripe.status !== "ativa"}>
-              <summary className="cursor-pointer text-sm font-medium">{stripe ? "Atualizar credenciais" : "Conectar"}</summary>
-              <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-suave">
+              <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">{stripe ? "Atualizar credenciais" : "Conectar"}</summary>
+              <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-ink-2">
                 <li>
                   Stripe → Desenvolvedores → Chaves de API → “Criar chave restrita” com <strong>leitura</strong> em Faturas, Assinaturas, Clientes e Cobranças. Cole abaixo e salve.
                 </li>
@@ -199,11 +201,11 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
           <div className="mb-4 flex flex-col gap-1 text-sm">
             <span className="font-medium">Endereço:</span>
             <Copiavel valor={`${base}/api/webhook/eventos`} />
-            {webhook && <span className="text-xs text-suave">Token em uso começa com {webhook.config.prefixo}…</span>}
+            {webhook && <span className="text-xs text-ink-2">Token em uso começa com {webhook.config.prefixo}…</span>}
           </div>
           <details className="mb-4">
-            <summary className="cursor-pointer text-sm font-medium">Formato</summary>
-            <pre className="mt-2 overflow-x-auto rounded-md bg-fundo p-3 text-xs">{`POST ${base}/api/webhook/eventos
+            <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">Formato</summary>
+            <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-sunken p-4 font-mono text-xs leading-relaxed text-ink">{`POST ${base}/api/webhook/eventos
 Authorization: Bearer whk_…
 Content-Type: application/json
 
@@ -235,12 +237,12 @@ Vários de uma vez: { "eventos": [ … ] } (até 500). Reenviar não duplica.`}<
                     <legend className="mb-1 font-medium">{campo === "acoes_lead" ? "Lead" : "Compra"}</legend>
                     {opcoesAcao.map((a) => (
                       <label key={a} className="flex items-center gap-2">
-                        <input type="checkbox" name={campo} value={a} defaultChecked={metricas?.[campo]?.includes(a)} />
+                        <input type="checkbox" name={campo} value={a} defaultChecked={metricas?.[campo]?.includes(a)} className="size-4 accent-accent" />
                         <code className="text-xs">{a}</code>
-                        <span className="text-xs text-suave">{decimal(Number(acoesVistas.find((v) => v.action_type === a)?.total ?? NaN), 0)}</span>
+                        <span className="text-xs text-ink-2">{decimal(Number(acoesVistas.find((v) => v.action_type === a)?.total ?? NaN), 0)}</span>
                       </label>
                     ))}
-                    <input name={campo} placeholder="outra ação (ex.: offsite_conversion.fb_pixel_complete_registration)" className="mt-1 rounded-md border border-borda bg-superficie px-2 py-1 text-xs" />
+                    <input name={campo} placeholder="outra ação (ex.: offsite_conversion.fb_pixel_complete_registration)" className="mt-2 min-h-11 rounded-md border border-line-strong bg-surface px-3 font-mono text-xs" />
                   </fieldset>
                 ))}
               </div>

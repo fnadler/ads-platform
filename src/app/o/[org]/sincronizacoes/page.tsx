@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
-import { Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
+import { Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, inteiro } from "@/lib/formato";
 import { sincronizarConta } from "@/lib/jobs/acoes";
@@ -26,8 +26,8 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
 
   return (
     <>
-      <Titulo descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook.">
-        Sincronizações
+      <Titulo sobrancelha="Sincronizações" descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook.">
+        Quando os números foram lidos
       </Titulo>
       <div className="grid gap-6">
         {temPapel(papel, "gestor") && !!contas?.length && (
@@ -37,7 +37,7 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
                 <div key={c.account_id} className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="font-medium">{c.nome}</div>
-                    <div className="font-mono text-xs text-suave">{c.account_id}</div>
+                    <div className="font-mono text-xs text-ink-2">{c.account_id}</div>
                   </div>
                   <div className="flex gap-2">
                     {(["manual", "carga"] as const).map((modo) => (
@@ -53,7 +53,7 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
             </div>
           </Cartao>
         )}
-        <Cartao titulo="Execuções">
+        <Cartao titulo="Execuções" rente>
           <Tabela>
             <thead>
               <tr>
@@ -74,15 +74,19 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
                   <td>
                     <Etiqueta tom={STATUS[e.status].tom}>{STATUS[e.status].rotulo}</Etiqueta>
                   </td>
-                  <td>{inteiro(e.linhas)}</td>
-                  <td className="max-w-md text-xs text-suave">
+                  <td className="num">{inteiro(e.linhas)}</td>
+                  <td className="max-w-md text-xs text-ink-2">
                     {e.erro ?? (e.terminado_em ? `terminou ${dataHora(e.terminado_em, org.fuso)}` : e.cursor?.campanha ? `até ${e.cursor.anuncio ?? e.cursor.campanha}` : "")}
                   </td>
                 </tr>
               ))}
             </tbody>
           </Tabela>
-          {!execucoes?.length && <p className="text-sm text-suave">Nenhuma sincronização ainda.</p>}
+          {!execucoes?.length && (
+            <div className="px-5 pb-5">
+              <Vazio titulo="Nenhuma sincronização ainda">Ligue uma conta de anúncios em Configurações: a carga do histórico entra na fila sozinha.</Vazio>
+            </div>
+          )}
         </Cartao>
       </div>
     </>

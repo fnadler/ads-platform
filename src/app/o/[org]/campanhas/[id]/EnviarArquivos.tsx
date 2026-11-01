@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { IconeEnviar } from "@/components/Icones";
 import { Botao } from "@/components/ui";
 import { registrarCriativo } from "@/lib/publicacao/acoes";
 import { criarClienteNavegador } from "@/lib/supabase/navegador";
@@ -50,13 +51,14 @@ export function EnviarArquivos({ orgId, campanhaId }: { orgId: string; campanhaI
 
   return (
     <div className="flex flex-col gap-2">
-      <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-borda bg-fundo px-4 py-6 text-center text-sm hover:border-marca">
-        <span className="font-medium">{enviando ? "Enviando…" : "Escolher vídeos ou imagens"}</span>
-        <span className="text-xs text-suave">MP4, MOV, JPG, PNG ou WEBP, até 50 MB cada. Um anúncio por arquivo.</span>
+      <label className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-line-strong bg-surface-2 px-4 py-8 text-center text-sm transition-colors hover:border-accent hover:bg-accent-soft focus-within:outline-2 focus-within:outline-accent">
+        <IconeEnviar tamanho={22} className="text-accent-text" />
+        <span className="font-[550] text-ink">{enviando ? "Enviando…" : "Escolher vídeos ou imagens"}</span>
+        <span className="text-xs text-ink-3">MP4, MOV, JPG, PNG ou WEBP, até 50 MB cada. Um anúncio por arquivo.</span>
         <input type="file" multiple accept={ACEITOS.join(",")} className="hidden" disabled={enviando} onChange={(e) => enviar(e.currentTarget.files)} />
       </label>
       {linhas.map((l, i) => (
-        <div key={`${l.nome}-${i}`} className={`text-xs ${l.erro ? "text-erro" : "text-suave"}`}>
+        <div key={`${l.nome}-${i}`} className={`text-xs ${l.erro ? "text-err" : "text-ink-2"}`}>
           {l.nome}: {l.situacao}
         </div>
       ))}
