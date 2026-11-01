@@ -30,8 +30,8 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
   const caminho = (k: "atual" | "anterior") => pontos.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join(" ");
   const ultimo = pontos.length - 1;
   const rotulosFinais = [
-    { k: "atual" as const, nome: "Últimos 7 dias", y: y(pontos[ultimo]?.atual ?? 0), cor: "var(--serie-atual)" },
-    { k: "anterior" as const, nome: "7 anteriores", y: y(pontos[ultimo]?.anterior ?? 0), cor: "var(--serie-anterior)" },
+    { k: "atual" as const, nome: "Últimos 7 dias", y: y(pontos[ultimo]?.atual ?? 0), cor: "var(--color-accent)" },
+    { k: "anterior" as const, nome: "7 anteriores", y: y(pontos[ultimo]?.anterior ?? 0), cor: "var(--color-prev)" },
   ];
   // Rótulos finais muito próximos: afasta só o suficiente para não sobrepor.
   if (Math.abs(rotulosFinais[0].y - rotulosFinais[1].y) < 28) {
@@ -48,10 +48,10 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
         <span className="font-medium">{titulo}</span>
         <span className="flex gap-4 text-xs text-suave">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4 rounded bg-serie-atual" /> Últimos 7 dias
+            <span className="inline-block h-0.5 w-4 rounded bg-accent" /> Últimos 7 dias
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-0.5 w-4 rounded bg-serie-anterior" /> 7 dias anteriores
+            <span className="inline-block w-4 border-t-2 border-dashed border-prev" /> 7 dias anteriores
           </span>
         </span>
       </figcaption>
@@ -59,29 +59,30 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
         <svg viewBox={`0 0 ${L} ${A}`} className="w-full" role="img" aria-label={`${titulo}: ${pontos.at(-1)?.atual ?? 0} nos últimos 7 dias contra ${pontos.at(-1)?.anterior ?? 0} nos 7 anteriores`}>
           {marcas.map((m) => (
             <g key={m}>
-              <line x1={M.esq} x2={L - M.dir} y1={y(m)} y2={y(m)} stroke="var(--grade)" strokeWidth={1} />
-              <text x={M.esq - 6} y={y(m)} dy="0.32em" textAnchor="end" className="fill-suave text-[11px]">
+              <line x1={M.esq} x2={L - M.dir} y1={y(m)} y2={y(m)} stroke="var(--color-line)" strokeWidth={1} />
+              <text x={M.esq - 6} y={y(m)} dy="0.32em" textAnchor="end" className="fill-ink-3 text-[11px]">
                 {m.toLocaleString("pt-BR")}
               </text>
             </g>
           ))}
           {pontos.map((pt, i) => (
-            <text key={pt.rotulo} x={x(i)} y={A - 8} textAnchor="middle" className="fill-suave text-[11px]">
+            <text key={pt.rotulo} x={x(i)} y={A - 8} textAnchor="middle" className="fill-ink-3 text-[11px]">
               {pt.rotulo}
             </text>
           ))}
-          {foco !== null && <line x1={x(foco)} x2={x(foco)} y1={M.topo} y2={M.topo + altura} stroke="var(--suave)" strokeWidth={1} />}
-          <path d={caminho("anterior")} fill="none" stroke="var(--serie-anterior)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-          <path d={caminho("atual")} fill="none" stroke="var(--serie-atual)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+          {foco !== null && <line x1={x(foco)} x2={x(foco)} y1={M.topo} y2={M.topo + altura} stroke="var(--color-ink-3)" strokeWidth={1} />}
+          {ultimo >= 0 && <path d={`${caminho("atual")} L${x(ultimo).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`} fill="var(--color-accent-soft)" opacity={0.7} />}
+          <path d={caminho("anterior")} fill="none" stroke="var(--color-prev)" strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={caminho("atual")} fill="none" stroke="var(--color-accent)" strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />
           {foco !== null &&
             (["anterior", "atual"] as const).map((k) => (
-              <circle key={k} cx={x(foco)} cy={y(pontos[foco][k])} r={4} fill={`var(--serie-${k})`} stroke="var(--superficie)" strokeWidth={2} />
+              <circle key={k} cx={x(foco)} cy={y(pontos[foco][k])} r={4} fill={k === "atual" ? "var(--color-accent)" : "var(--color-prev)"} stroke="var(--color-surface)" strokeWidth={2} />
             ))}
           {ultimo >= 0 &&
             rotulosFinais.map((r) => (
               <g key={r.k}>
                 <line x1={x(ultimo) + 4} x2={x(ultimo) + 12} y1={y(pontos[ultimo][r.k])} y2={r.y} stroke={r.cor} strokeWidth={1} />
-                <text x={x(ultimo) + 16} y={r.y} dy="0.32em" className="fill-texto text-[12px] font-medium">
+                <text x={x(ultimo) + 16} y={r.y} dy="0.32em" className="fill-ink text-[12px] font-semibold">
                   {pontos[ultimo][r.k].toLocaleString("pt-BR")}
                 </text>
               </g>
@@ -101,14 +102,14 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
         </svg>
         {p && foco !== null && (
           <div
-            className="pointer-events-none absolute top-0 rounded-md border border-borda bg-superficie px-3 py-2 text-xs shadow-sm"
+            className="pointer-events-none absolute top-0 rounded-md border border-line bg-surface px-3 py-2 text-xs shadow-pop"
             style={{ left: `${(x(foco) / L) * 100}%`, transform: foco > pontos.length / 2 ? "translateX(calc(-100% - 8px))" : "translateX(8px)" }}
           >
             <div className="flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-3 bg-serie-atual" /> {p.rotulo}: <strong>{p.atual.toLocaleString("pt-BR")}</strong>
+              <span className="inline-block h-0.5 w-3 bg-accent" /> {p.rotulo}: <strong>{p.atual.toLocaleString("pt-BR")}</strong>
             </div>
             <div className="flex items-center gap-1.5 text-suave">
-              <span className="inline-block h-0.5 w-3 bg-serie-anterior" /> {p.rotuloAnterior}: <strong className="text-texto">{p.anterior.toLocaleString("pt-BR")}</strong>
+              <span className="inline-block w-3 border-t-2 border-dashed border-prev" /> {p.rotuloAnterior}: <strong className="text-texto">{p.anterior.toLocaleString("pt-BR")}</strong>
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useState, type ReactNode } from "react";
+import { IconeCheck, IconeCopiar, IconeExclamacao } from "./Icones";
 import { Aviso, Botao } from "./ui";
 
 // Formulário ligado a uma server action que devolve { erro } ou { mensagem }. Mostra o resultado e
@@ -18,7 +19,7 @@ export function Formulario({
   acao: (anterior: Resultado, dados: FormData) => Promise<Resultado>;
   children?: ReactNode;
   rotulo: string;
-  variante?: "primario" | "secundario" | "perigo";
+  variante?: "primario" | "secundario" | "perigo" | "peso" | "fantasma";
   className?: string;
   confirmar?: string;
 }) {
@@ -45,21 +46,35 @@ export function Formulario({
 }
 
 /** Valor mostrado uma vez só (link de convite, token do webhook), com botão de copiar. */
-export function Segredo({ valor, aviso = "Copie agora: por segurança, ele não aparece de novo." }: { valor: string; aviso?: string }) {
+export function Segredo({ valor, aviso = "Copie agora: não aparece de novo." }: { valor: string; aviso?: string }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2 rounded-lg border-2 border-warn-line bg-warn-soft p-3.5">
+      <span className="flex items-center gap-1.5 text-sm font-[550] text-warn">
+        <IconeExclamacao tamanho={15} strokeWidth={2.4} />
+        {aviso}
+      </span>
       <Copiavel valor={valor} />
-      <span className="text-xs text-suave">{aviso}</span>
     </div>
   );
 }
 
 export function Copiavel({ valor }: { valor: string }) {
+  const [copiado, setCopiado] = useState(false);
   return (
     <div className="flex items-stretch gap-2">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md border border-borda bg-fundo px-3 py-2 font-mono text-xs">{valor}</code>
-      <Botao type="button" variante="secundario" onClick={() => navigator.clipboard.writeText(valor)}>
-        Copiar
+      <code className="flex min-h-11 min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md border border-line bg-sunken px-3 font-mono text-xs text-ink">{valor}</code>
+      <Botao
+        type="button"
+        variante="secundario"
+        className="shrink-0"
+        onClick={() => {
+          navigator.clipboard.writeText(valor);
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 1800);
+        }}
+      >
+        {copiado ? <IconeCheck tamanho={16} className="text-ok" /> : <IconeCopiar tamanho={16} />}
+        {copiado ? "Copiado" : "Copiar"}
       </Botao>
     </div>
   );
