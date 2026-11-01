@@ -144,3 +144,14 @@ export function lotesListaClientes(membros: Array<{ email_hash: string | null; t
   for (let i = 0; i < linhas.length; i += tamanho) lotes.push(linhas.slice(i, i + tamanho));
   return { schema: ["EMAIL", "PHONE"], lotes, total: linhas.length };
 }
+
+/** Piso que a Meta devolve para públicos pequenos: por privacidade, ela não informa nada abaixo disso. */
+export const PISO_TAMANHO_META = 1000;
+
+/** Texto do tamanho lido da Meta (“menos de 1 mil” quando ela devolve só o piso). */
+export function textoTamanhoMeta(t: { min?: number | null; max?: number | null } | null | undefined) {
+  if (t?.min == null) return null;
+  const fmt = (n: number) => (n >= 1e6 ? `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi` : n >= 1000 ? `${Math.round(n / 1000)} mil` : String(n));
+  if ((t.max ?? t.min) <= PISO_TAMANHO_META) return "menos de 1 mil";
+  return t.max && t.max !== t.min ? `${fmt(t.min)} – ${fmt(t.max)}` : fmt(t.min);
+}

@@ -4,7 +4,7 @@ import { IconeMais } from "@/components/Icones";
 import { BotaoLink, Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
-import { TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
+import { textoTamanhoMeta, TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
 import { rotaOrg } from "@/lib/rotas";
 
 export const metadata: Metadata = { title: "Públicos" };
@@ -34,9 +34,6 @@ const NOVOS: Array<{ tipo: TipoPublico; descricao: string }> = [
     descricao: "Pessoas parecidas com um público seu (ex.: com os pagantes).",
   },
 ];
-
-const fmt = (n?: number | null) =>
-  n == null ? null : n >= 1e6 ? `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi` : n >= 1000 ? `${Math.round(n / 1000)} mil` : String(n);
 
 export default async function Publicos({ params }: PageProps<"/o/[org]/publicos">) {
   const { org: slug } = await params;
@@ -87,11 +84,11 @@ export default async function Publicos({ params }: PageProps<"/o/[org]/publicos"
               </thead>
               <tbody>
                 {publicos.map((p) => {
-                  const est = (p.meta_tamanho ?? p.estimativa) as {
-                    min?: number;
-                    max?: number;
-                  } | null;
-                  const tam = est?.min != null ? `${fmt(est.min)}${est.max && est.max !== est.min ? ` – ${fmt(est.max)}` : ""}` : "—";
+                  const meta = p.meta_tamanho as { min?: number; max?: number; enviados?: number } | null;
+                  const tam =
+                    p.tipo === "funil" && meta?.enviados != null
+                      ? `${meta.enviados.toLocaleString("pt-BR")} enviados`
+                      : (textoTamanhoMeta(meta ?? (p.estimativa as { min?: number; max?: number } | null)) ?? "—");
                   return (
                     <tr key={p.id}>
                       <td>

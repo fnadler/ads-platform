@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lotesListaClientes, payloadPublicoPersonalizado, prontoParaUsar, targetingDoPublico, type Publico } from "./modelo";
+import { textoTamanhoMeta, lotesListaClientes, payloadPublicoPersonalizado, prontoParaUsar, targetingDoPublico, type Publico } from "./modelo";
 
 const base = { situacao: "pronto", meta_audience_id: null };
 const rapido = { paises: ["BR"], idade_min: 18, idade_max: 65, advantage: true };
@@ -63,5 +63,13 @@ describe("públicos personalizados", () => {
       2,
     );
     expect(r).toEqual({ schema: ["EMAIL", "PHONE"], total: 3, lotes: [[["e1", ""], ["", "t2"]], [["e3", "t3"]]] });
+  });
+});
+
+describe("tamanho lido da Meta", () => {
+  it("abaixo de mil a Meta só devolve o piso", () => {
+    expect(textoTamanhoMeta({ min: 1000, max: 1000 })).toBe("menos de 1 mil");
+    expect(textoTamanhoMeta({ min: 21_100_000, max: 24_900_000 })).toBe("21,1 mi – 24,9 mi");
+    expect(textoTamanhoMeta(null)).toBeNull();
   });
 });

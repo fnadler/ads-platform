@@ -8,14 +8,11 @@ import { Aviso, Campo, Cartao, Etiqueta, Selecao, Titulo } from "@/components/ui
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { enviarPublico, excluirPublico, salvarPublico } from "@/lib/publicos/acoes";
-import { DefinicaoDetalhado, MINIMO_PERSONALIZADO, SEGMENTOS, TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
+import { DefinicaoDetalhado, MINIMO_PERSONALIZADO, PISO_TAMANHO_META, SEGMENTOS, textoTamanhoMeta, TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
 import { rotaOrg } from "@/lib/rotas";
 import { EditorInteresses } from "./EditorInteresses";
 
 export const metadata: Metadata = { title: "Público" };
-
-const fmt = (n?: number | null) =>
-  n == null ? "—" : n >= 1e6 ? `${(n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mi` : n >= 1000 ? `${Math.round(n / 1000)} mil` : String(n);
 
 export default async function Publico({ params, searchParams }: PageProps<"/o/[org]/publicos/[id]">) {
   const { org: slug, id } = await params;
@@ -32,12 +29,7 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
   const tipo = (novo ? String(busca.tipo ?? "detalhado") : p!.tipo) as TipoPublico;
   if (!(tipo in TIPOS_PUBLICO)) notFound();
   const def = (p?.definicao ?? {}) as Record<string, unknown>;
-  const tam = p?.meta_tamanho as {
-    min?: number;
-    max?: number;
-    situacao?: string;
-    em?: string;
-  } | null;
+  const tam = p?.meta_tamanho as { min?: number; max?: number; enviados?: number; situacao?: string; em?: string } | null;
   const hidden = (
     <>
       <input type="hidden" name="organizacao_id" value={org.id} />
@@ -167,14 +159,25 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
             {p && (
               <aside className="flex flex-col gap-4">
                 <Cartao titulo="Na Meta">
-                  <div className="num-display text-[28px] text-ink">{tam?.min != null ? `${fmt(tam.min)}${tam.max && tam.max !== tam.min ? ` – ${fmt(tam.max)}` : ""}` : "—"}</div>
-                  <p className="mt-1 text-xs text-ink-3">
-                    pessoas encontradas
-                    {tam?.em ? ` · lido ${dataHora(tam.em, org.fuso)}` : ""}
-                    {p.enviado_em ? ` · lista enviada ${dataHora(p.enviado_em, org.fuso)}` : ""}
-                  </p>
+                  {tipo === "funil" && tam?.enviados != null ? (
+                    <>
+                      <div className="num-display text-[28px] text-ink">{tam.enviados.toLocaleString("pt-BR")}</div>
+                      <p className="mt-1 text-xs text-ink-3">
+                        {tam.enviados === 1 ? "cliente enviado" : "clientes enviados"}
+                        {p.enviado_em ? ` em ${dataHora(p.enviado_em, org.fuso)}` : ""}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="num-display text-[28px] text-ink">{textoTamanhoMeta(tam) ?? "—"}</div>
+                  )}
+                  {textoTamanhoMeta(tam) && (
+                    <p className="mt-2 text-xs text-ink-2">
+                      A Meta encontrou {textoTamanhoMeta(tam)} {tam?.em ? `(lido ${dataHora(tam.em, org.fuso)})` : ""}
+                      {(tam?.max ?? tam?.min ?? 0) <= PISO_TAMANHO_META ? ". Por privacidade, ela não informa números abaixo de mil." : "."}
+                    </p>
+                  )}
                   {tam?.situacao && <p className="mt-2 text-xs text-ink-2">{tam.situacao}</p>}
-                  {tam?.min != null && tam.min < MINIMO_PERSONALIZADO && (
+                  {tipo !== "semelhante" && (tam?.enviados ?? Infinity) < MINIMO_PERSONALIZADO && (
                     <Aviso tom="alerta" className="mt-3">
                       Menos de {MINIMO_PERSONALIZADO} pessoas: a Meta pode não entregar anúncios para este público nem criar semelhantes a partir dele. Como exclusão, funciona.
                     </Aviso>
