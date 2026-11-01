@@ -111,6 +111,31 @@ A tela **Rastreio** mostra:
 - a verificação das páginas de destino;
 - o **teste de ponta a ponta**: um link com os IDs reais do anúncio e um código. A pessoa se cadastra com o código no e-mail (`voce+rastreio-4f9a2c@gmail.com`) e o sistema confere campo a campo o que chegou.
 
+### Assistente de campanhas
+
+Em **Campanhas**, o sistema cria a campanha na Meta a partir de um modelo. No modelo **Cadastro no site**:
+
+- **Fixado pelo sistema:** objetivo Cadastros, destino site, otimização para o evento do conjunto de dados, atribuição 7 dias clique / 1 dia visualização, Parâmetros de URL e nome dos anúncios.
+- **Escolhido pela pessoa:** verba diária, datas, idade, Advantage+, página de destino e os criativos (texto, título e botão).
+
+Regras de segurança:
+- o sistema só **cria** objetos novos e nunca mexe no que já existe na conta;
+- tudo nasce **pausado**, e ativar exige digitar "ATIVAR";
+- cada organização tem um teto de verba diária;
+- toda chamada à Meta fica registrada em `operacoes_meta` e aparece na página da campanha.
+
+Pré-requisitos, em **Configurações → Meta (publicação)**:
+- **Token:** gere um token do usuário do sistema com `ads_management` e `ads_read`. Ele é separado do token de leitura, então dá para revogar um sem afetar o outro.
+- **Acessos do usuário do sistema:** "Gerenciar campanhas" na conta de anúncios e acesso à Página (e ao Instagram) da marca.
+- **Escolhas na tela:** Página, Instagram, conjunto de dados e teto de verba, a partir das listas que o sistema lê da Meta.
+
+Os arquivos vão do navegador direto para o bucket privado `uploads-criativos`, com até 50 MB cada. A Meta baixa os vídeos por URL assinada. A criação roda na fila, em passos que retomam sem duplicar:
+1. envio das mídias;
+2. processamento dos vídeos;
+3. campanha;
+4. conjunto;
+5. criativos e anúncios.
+
 ## Regras de atribuição
 
 - A atribuição usa sempre **IDs**, nunca nomes. A ordem é:

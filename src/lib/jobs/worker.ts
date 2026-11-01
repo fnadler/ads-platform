@@ -2,6 +2,7 @@ import "server-only";
 import { marcarErroConexao } from "@/lib/conexoes/segredos";
 import { ErroLimiteMeta, ErroMeta } from "@/lib/integracoes/meta";
 import { executarSincronizacaoMeta } from "@/lib/meta/sincronizacao";
+import { executarPublicacao } from "@/lib/publicacao/job";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { executarHistoricoStripe } from "@/lib/vendas/historicoStripe";
 import type { ResultadoJob, Sincronizacao } from "./tipos";
@@ -46,14 +47,15 @@ export async function processarFila(prazoMs: number) {
 
     let resultado: string;
     try {
-      const r: ResultadoJob = s.tipo === "meta" ? await executarSincronizacaoMeta(admin, s, temTempo) : await executarHistoricoStripe(admin, s, temTempo);
+      const executar = { meta: executarSincronizacaoMeta, stripe_historico: executarHistoricoStripe, meta_publicacao: executarPublicacao }[s.tipo];
+      const r: ResultadoJob = await executar(admin, s, temTempo);
       if (r.status === "pronto") {
         await admin.from("sincronizacoes").update({ status: "ok", linhas: r.linhas, tentativas: 0, terminado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         if (s.tipo === "meta") await marcarConexaoMetaOk(s.organizacao_id);
         resultado = "ok";
       } else {
         await admin.from("sincronizacoes").update({ status: "na_fila", cursor: r.cursor, linhas: r.linhas, tentativas: 0, atualizado_em: new Date().toISOString() }).eq("id", s.id);
-        await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: 0 });
+        await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: r.atrasoSegundos ?? 0 });
         resultado = "continua";
       }
     } catch (e) {
@@ -61,13 +63,18 @@ export async function processarFila(prazoMs: number) {
         await admin.from("sincronizacoes").update({ status: "na_fila", erro: e.message, tentativas: 0, atualizado_em: new Date().toISOString() }).eq("id", s.id);
         await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: e.esperarSegundos });
         resultado = "limite";
-      } else if (s.tentativas + 1 < MAX_TENTATIVAS && !(e instanceof ErroMeta && [190, 200, 10].includes(e.codigo ?? 0))) {
+      } else if (
+        s.tentativas + 1 < MAX_TENTATIVAS &&
+        !(e instanceof ErroMeta && [190, 200, 10].includes(e.codigo ?? 0)) &&
+        // Publicação: erro da Meta (campo recusado, política) não melhora repetindo — vai direto para a tela.
+        !(s.tipo === "meta_publicacao" && e instanceof ErroMeta)
+      ) {
         await admin.from("sincronizacoes").update({ status: "na_fila", erro: mensagem(e), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: 120 * (s.tentativas + 1) });
         resultado = "nova tentativa";
       } else {
         await admin.from("sincronizacoes").update({ status: "erro", erro: mensagem(e), terminado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("id", s.id);
-        if (e instanceof ErroMeta) await marcarConexaoMetaErro(s.organizacao_id, mensagem(e));
+        if (s.tipo === "meta" && e instanceof ErroMeta) await marcarConexaoMetaErro(s.organizacao_id, mensagem(e));
         resultado = "erro";
       }
       console.error("[worker]", s.organizacao_id, s.tipo, s.alvo, mensagem(e));

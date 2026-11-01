@@ -28,6 +28,7 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
             itens={[
               { href: r(""), rotulo: "Início", exato: true },
               { href: r("/desempenho"), rotulo: "Desempenho" },
+              { href: r("/campanhas"), rotulo: "Campanhas" },
               { href: r("/rastreio"), rotulo: "Rastreio" },
               { href: r("/vendas"), rotulo: "Leads e vendas" },
               { href: r("/sincronizacoes"), rotulo: "Sincronizações" },

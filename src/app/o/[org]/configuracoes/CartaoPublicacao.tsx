@@ -1,0 +1,110 @@
+import { Formulario } from "@/components/Formulario";
+import { Aviso, Campo, Cartao, Etiqueta, Selecao } from "@/components/ui";
+import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
+import { lerPrerequisitos, type Prerequisitos } from "@/lib/integracoes/metaEscrita";
+import { conectarPublicacao, salvarConfigPublicacao } from "@/lib/publicacao/acoes";
+import { criarClienteAdmin } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+// Conexão de publicação (assistente de campanhas): token próprio com ads_management, separado do de
+// leitura, e a escolha de Página, Instagram, conjunto de dados e teto de verba — lidos da Meta na hora.
+export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: string; dono: boolean; supabase: SupabaseClient }) {
+  const [{ data: conexao }, { data: config }] = await Promise.all([
+    supabase.from("conexoes").select("id, status, ultimo_erro, config").eq("organizacao_id", orgId).eq("tipo", "meta_publicacao").maybeSingle(),
+    supabase.from("config_publicacao").select("*").eq("organizacao_id", orgId).maybeSingle(),
+  ]);
+  const hidden = <input type="hidden" name="organizacao_id" value={orgId} />;
+
+  let p: Prerequisitos | null = null;
+  let erroLeitura = "";
+  if (conexao && config?.account_id && dono) {
+    try {
+      const admin = criarClienteAdmin();
+      const segredo = await lerSegredo<SegredoMeta>(admin, orgId, conexao.id);
+      if (segredo) p = await lerPrerequisitos(segredo.token, config.account_id);
+    } catch (e) {
+      erroLeitura = (e as Error).message;
+    }
+  }
+  const opcao = (id: string, nome: string) => `${id}|${nome}`;
+
+  return (
+    <Cartao
+      titulo="Meta (publicação)"
+      descricao="Para o assistente criar campanhas na sua conta. Tudo nasce pausado; ativar é sempre uma decisão sua."
+      acoes={conexao ? <Etiqueta tom={conexao.status === "ativa" ? "ok" : "erro"}>{conexao.status === "ativa" ? "Ativa" : "Com erro"}</Etiqueta> : <Etiqueta>Não conectada</Etiqueta>}
+    >
+      {conexao?.ultimo_erro && <Aviso tom="erro" className="mb-4">{conexao.ultimo_erro}</Aviso>}
+      {dono && (
+        <details className="mb-4" open={!conexao}>
+          <summary className="cursor-pointer text-sm font-medium">{conexao ? "Trocar o token de publicação" : "Conectar"}</summary>
+          <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-suave">
+            <li>No Business Manager, no usuário do sistema: em Atribuir ativos, dê à conta de anúncios a permissão “Gerenciar campanhas” e atribua a Página do Facebook (e a conta do Instagram) da marca.</li>
+            <li>“Gerar token” com o mesmo app, validade “Nunca”, marcando <code>ads_management</code> e <code>ads_read</code>.</li>
+            <li>Cole abaixo. O token de leitura continua separado: dá para revogar um sem afetar o outro.</li>
+          </ol>
+          <Formulario acao={conectarPublicacao} rotulo="Validar e salvar">
+            {hidden}
+            <Campo rotulo="Token com ads_management" name="token" type="password" autoComplete="off" placeholder="EAA…" required />
+          </Formulario>
+        </details>
+      )}
+      {erroLeitura && <Aviso tom="erro" className="mb-4">Não foi possível ler a conta na Meta: {erroLeitura}</Aviso>}
+      {config && (
+        <div className="text-sm">
+          {p && dono ? (
+            <Formulario acao={salvarConfigPublicacao} rotulo="Salvar" className="grid gap-3 sm:grid-cols-2">
+              {hidden}
+              <Selecao rotulo="Página do Facebook" name="page" defaultValue={config.page_id ? opcao(config.page_id, config.page_nome ?? "") : ""} required>
+                <option value="">Escolha…</option>
+                {p.paginas.map((x) => (
+                  <option key={x.id} value={opcao(x.id, x.nome)}>
+                    {x.nome}
+                  </option>
+                ))}
+              </Selecao>
+              <Selecao rotulo="Conta do Instagram" name="instagram" defaultValue={config.instagram_user_id ? opcao(config.instagram_user_id, config.instagram_nome ?? "") : ""}>
+                <option value="">Sem Instagram (só Facebook)</option>
+                {p.instagram.map((x) => (
+                  <option key={x.id} value={opcao(x.id, x.nome)}>
+                    {x.nome}
+                  </option>
+                ))}
+              </Selecao>
+              <Selecao rotulo="Conjunto de dados (pixel)" name="pixel" defaultValue={config.pixel_id ? opcao(config.pixel_id, config.pixel_nome ?? "") : ""} required>
+                <option value="">Escolha…</option>
+                {p.pixels.map((x) => (
+                  <option key={x.id} value={opcao(x.id, x.nome)}>
+                    {x.nome} ({x.id}){x.ultimoEvento ? "" : " · sem eventos"}
+                  </option>
+                ))}
+              </Selecao>
+              <Campo rotulo="Teto de verba diária por campanha (R$)" name="teto_verba_diaria" type="number" min="1" step="1" defaultValue={Number(config.teto_verba_diaria)} required ajuda="O assistente não deixa criar campanha acima disto." />
+              {!p.paginas.length && <Aviso tom="alerta">Nenhuma Página disponível: atribua a Página ao usuário do sistema.</Aviso>}
+              {!p.instagram.length && <Aviso tom="info">Nenhuma conta do Instagram conectada à conta de anúncios: os anúncios saem pela Página do Facebook.</Aviso>}
+            </Formulario>
+          ) : (
+            <dl className="grid gap-1 sm:grid-cols-2">
+              <div>
+                <dt className="text-suave">Página</dt>
+                <dd>{config.page_nome ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-suave">Instagram</dt>
+                <dd>{config.instagram_nome ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-suave">Conjunto de dados</dt>
+                <dd>{config.pixel_nome ? `${config.pixel_nome} (${config.pixel_id})` : "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-suave">Teto de verba diária</dt>
+                <dd>{Number(config.teto_verba_diaria).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</dd>
+              </div>
+            </dl>
+          )}
+        </div>
+      )}
+    </Cartao>
+  );
+}

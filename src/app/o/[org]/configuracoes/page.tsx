@@ -8,6 +8,7 @@ import { alterarConta, conectarMeta, conectarStripe, gerarTokenWebhook, importar
 import { dataHora, decimal } from "@/lib/formato";
 import { rotaOrg } from "@/lib/rotas";
 import { urlSistema } from "@/lib/url";
+import { CartaoPublicacao } from "./CartaoPublicacao";
 
 export const metadata: Metadata = { title: "Configurações" };
 
@@ -137,6 +138,8 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
             </Tabela>
           )}
         </Cartao>
+
+        <CartaoPublicacao orgId={org.id} dono={dono} supabase={supabase} />
 
         <Cartao titulo="Stripe (vendas e assinaturas)" descricao="Faturas pagas viram vendas; assinaturas em teste grátis marcam o lead." acoes={etiqueta(stripe)}>
           {stripe?.ultimo_erro && <Aviso tom="alerta" className="mb-4">{stripe.ultimo_erro}</Aviso>}
