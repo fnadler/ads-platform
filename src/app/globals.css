@@ -1,59 +1,68 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
-:root {
-  --fundo: #f7f7f5;
-  --superficie: #ffffff;
-  --texto: #1c1c1a;
-  --suave: #6b6b66;
-  --borda: #e4e4df;
-  --marca: #1f5eff;
-  --marca-texto: #ffffff;
-  --ok: #157f3d;
-  --alerta: #a15c00;
-  --erro: #c4271c;
-  /* gráficos: período atual (destaque) e anterior (base de comparação, cinza) */
-  --serie-atual: #2a78d6;
-  --serie-anterior: #86857f;
-  --grade: #ecebe7;
+/* Fontes: next/font gera nomes de família próprios (variáveis --fonte-*), ligados aqui aos tokens. */
+@theme inline {
+  --font-sans: var(--fonte-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--fonte-mono), "JetBrains Mono", ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fundo: #111110;
-    --superficie: #1a1a19;
-    --texto: #ededea;
-    --suave: #a3a39d;
-    --borda: #2e2e2b;
-    --marca: #5b8cff;
-    --marca-texto: #0b0b0a;
-    --ok: #4ade80;
-    --alerta: #fbbf24;
-    --erro: #f87171;
-    --serie-atual: #3987e5;
-    --serie-anterior: #6f6e69;
-    --grade: #2a2a28;
+/* Nomes de cor usados nas telas antes do redesenho, como apelidos dos tokens do Adverdad (tokens.css).
+   Assim toda tela herda a paleta e o tema escuro; as telas redesenhadas usam os nomes novos. */
+@theme inline {
+  --color-fundo: var(--color-bg);
+  --color-superficie: var(--color-surface);
+  --color-texto: var(--color-ink);
+  --color-suave: var(--color-ink-2);
+  --color-borda: var(--color-line);
+  --color-marca: var(--color-accent);
+  --color-marca-texto: var(--color-on-accent);
+  --color-alerta: var(--color-warn);
+  --color-erro: var(--color-err);
+  --color-serie-atual: var(--color-accent);
+  --color-serie-anterior: var(--color-prev);
+  --color-grade: var(--color-line);
+}
+
+@layer base {
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  ::placeholder {
+    color: var(--color-ink-3);
+  }
+  ::selection {
+    background: var(--color-accent-soft);
   }
 }
 
-@theme inline {
-  --color-fundo: var(--fundo);
-  --color-superficie: var(--superficie);
-  --color-texto: var(--texto);
-  --color-suave: var(--suave);
-  --color-borda: var(--borda);
-  --color-marca: var(--marca);
-  --color-marca-texto: var(--marca-texto);
-  --color-ok: var(--ok);
-  --color-alerta: var(--alerta);
-  --color-erro: var(--erro);
-  --color-serie-atual: var(--serie-atual);
-  --color-serie-anterior: var(--serie-anterior);
-  --color-grade: var(--grade);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@keyframes adv-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
 }
 
-body {
-  background: var(--fundo);
-  color: var(--texto);
+@utility shimmer {
+  background: linear-gradient(90deg, var(--color-sunken), var(--color-surface-2), var(--color-sunken));
+  background-size: 800px 100%;
+  animation: adv-shimmer 1.2s linear infinite;
+}
+
+@utility sobrancelha {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-ink-3);
 }

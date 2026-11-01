@@ -1,0 +1,105 @@
+/* Adverdad — tokens de design para Next.js + Tailwind 4
+   Uso: app/globals.css → @import "tailwindcss"; @import "./tokens.css";
+   Tema escuro: <html data-theme="dark">. */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  /* Tipografia — Inter (UI, números e títulos) + JetBrains Mono (IDs, tokens, URLs) */
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --text-2xs: 11px;  --text-2xs--line-height: 14px;
+  --text-xs: 12px;   --text-xs--line-height: 16px;
+  --text-sm: 13px;   --text-sm--line-height: 18px;
+  --text-base: 14px; --text-base--line-height: 21px;
+  --text-lg: 15px;   --text-lg--line-height: 22px;
+  --text-xl: 18px;   --text-xl--line-height: 24px;
+  --text-2xl: 24px;  --text-2xl--line-height: 30px;
+  --text-3xl: 30px;  --text-3xl--line-height: 36px;
+  --text-4xl: 44px;  --text-4xl--line-height: 48px;
+
+  --spacing: 4px;
+
+  --radius-sm: 6px;
+  --radius-md: 9px;    /* campos e botões */
+  --radius-lg: 14px;   /* cartões */
+  --radius-xl: 18px;   /* modais, blocos de destaque */
+
+  /* Marca */
+  --color-navy: #0B1E5B;
+  --color-blue: #2563FF;
+  --color-lime: #A3FF12;
+  --color-lime-ink: #0B1E5B;
+
+  /* Tema claro (padrão) */
+  --color-bg: #F4F6FA;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F8FAFC;
+  --color-sunken: #EEF1F7;
+  --color-ink: #0F1A45;
+  --color-ink-2: #4A5372;
+  --color-ink-3: #687089;
+  --color-line: #E2E8F0;
+  --color-line-strong: #CBD3E1;
+  --color-chrome: #0B1E5B;
+  --color-chrome-2: #16307F;
+  --color-chrome-ink: #FFFFFF;
+  --color-chrome-ink-2: #AEB9DD;
+  --color-accent: #2563FF;
+  --color-accent-hover: #1A4FE0;
+  --color-accent-soft: #EAF0FF;
+  --color-accent-text: #1C4FDB;
+  --color-on-accent: #FFFFFF;
+  /* Estado — sempre com ícone/rótulo */
+  --color-ok: #157347;   --color-ok-soft: #EAF7EF;   --color-ok-line: #BFE3CD;
+  --color-warn: #8A5708; --color-warn-soft: #FDF5E4; --color-warn-line: #F0D9A6;
+  --color-err: #C0281E;  --color-err-soft: #FDEEEC;  --color-err-line: #F3C6C1;
+  /* Gráficos */
+  --color-prev: #B7BFD0;
+  --color-ad-1: #F2733A; --color-ad-2: #2563FF; --color-ad-3: #12A594;
+  --color-ad-4: #D64C94; --color-ad-5: #B38A12; --color-ad-6: #7B5CE0;
+
+  --shadow-card: 0 1px 2px rgb(11 30 91 / .04), 0 4px 16px -6px rgb(11 30 91 / .08);
+  --shadow-pop: 0 20px 48px -12px rgb(11 30 91 / .25), 0 0 0 1px rgb(11 30 91 / .06);
+}
+
+/* Tema escuro — base navy da marca, não inversão */
+[data-theme="dark"] {
+  --color-bg: #060D2B;
+  --color-surface: #0D1840;
+  --color-surface-2: #12204F;
+  --color-sunken: #040A22;
+  --color-ink: #F4F6FA;
+  --color-ink-2: #B6BFDC;
+  --color-ink-3: #8C96BB;
+  --color-line: #1B2A62;
+  --color-line-strong: #2A3B7E;
+  --color-chrome: #040A22;
+  --color-chrome-2: #12204F;
+  --color-chrome-ink: #F4F6FA;
+  --color-chrome-ink-2: #8C96BB;
+  --color-accent: #5B8BFF;
+  --color-accent-hover: #7CA2FF;
+  --color-accent-soft: #14245F;
+  --color-accent-text: #93B2FF;
+  --color-on-accent: #040A22;
+  --color-ok: #5FD495;   --color-ok-soft: #0B2A25;   --color-ok-line: #1D4F3E;
+  --color-warn: #F2BE5C; --color-warn-soft: #2A2213; --color-warn-line: #56431C;
+  --color-err: #FF8A80;  --color-err-soft: #2E1424;  --color-err-line: #5E2632;
+  --color-prev: #3D4C85;
+  --color-ad-1: #FF8D5C; --color-ad-2: #5B8BFF; --color-ad-3: #3CCFBD;
+  --color-ad-4: #F07BBA; --color-ad-5: #E2B33C; --color-ad-6: #A28BFF;
+  --shadow-card: 0 0 0 1px rgb(255 255 255 / .02);
+  --shadow-pop: 0 24px 56px -12px rgb(0 0 0 / .7), 0 0 0 1px #22337A;
+  color-scheme: dark;
+}
+
+@layer base {
+  html { font-family: var(--font-sans); font-feature-settings: "tnum" 1, "cv11" 1; background: var(--color-bg); color: var(--color-ink); }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+}
+
+@utility num-display { font-weight: 650; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; }
+@utility title-page { font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+@utility num { font-variant-numeric: tabular-nums; text-align: right; }
+@utility tap { min-height: 44px; min-width: 44px; }

@@ -1,20 +1,26 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const inter = Inter({ variable: "--fonte-inter", subsets: ["latin"] });
+const mono = JetBrains_Mono({ variable: "--fonte-mono", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: { default: "Tráfego que vende", template: "%s · Tráfego que vende" },
+  title: { default: "Adverdad", template: "%s · Adverdad" },
   description: "Saiba quais anúncios trazem venda, não só conversa, e o que fazer a seguir.",
   robots: { index: false, follow: false },
 };
 
+// Tema: o script roda antes da primeira pintura e aplica o salvo (ou o do sistema), sem piscar.
+const SCRIPT_TEMA = `(function(){try{var t=localStorage.getItem("tema");if(t!=="claro"&&t!=="escuro"){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"escuro":"claro"}document.documentElement.setAttribute("data-theme",t==="escuro"?"dark":"light")}catch(e){}})()`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+    <html lang="pt-BR" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${mono.variable} h-full antialiased`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
+      </head>
+      <body className="flex min-h-full flex-col font-sans">{children}</body>
     </html>
   );
 }
