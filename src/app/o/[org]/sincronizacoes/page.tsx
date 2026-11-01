@@ -18,11 +18,22 @@ const MODO: Record<string, string> = { carga: "Histórico", incremental: "Autom�
 export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sincronizacoes">) {
   const { org: slug } = await params;
   const { org, papel, supabase } = await exigirOrganizacao(slug);
-  const [{ data: contas }, { data: execucoes }] = await Promise.all([
+  const [{ data: contas }, { data: execucoes }, { data: publicos }, { data: campanhas }] = await Promise.all([
     supabase.from("contas_anuncio").select("account_id, nome").eq("organizacao_id", org.id).eq("ativa", true),
     supabase.from("sincronizacoes").select("*").eq("organizacao_id", org.id).order("criado_em", { ascending: false }).limit(50),
+    supabase.from("publicos").select("id, nome").eq("organizacao_id", org.id),
+    supabase.from("campanhas_assistente").select("id, nome").eq("organizacao_id", org.id),
   ]);
   const nomeConta = new Map((contas ?? []).map((c) => [c.account_id, c.nome]));
+  const nomePublico = new Map((publicos ?? []).map((p) => [p.id, p.nome]));
+  const nomeCampanha = new Map((campanhas ?? []).map((c) => [c.id, c.nome]));
+  const oQue = (tipo: string, alvo: string) =>
+    ({
+      meta: `Meta · ${nomeConta.get(alvo) ?? alvo}`,
+      stripe_historico: "Stripe · histórico",
+      meta_publicacao: `Campanha · ${nomeCampanha.get(alvo) ?? "criação na Meta"}`,
+      meta_publico: `Público · ${nomePublico.get(alvo) ?? "excluído"}`,
+    })[tipo] ?? tipo;
 
   return (
     <>
@@ -69,7 +80,7 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
               {(execucoes ?? []).map((e) => (
                 <tr key={e.id}>
                   <td className="whitespace-nowrap">{dataHora(e.criado_em, org.fuso)}</td>
-                  <td>{e.tipo === "meta" ? `Meta · ${nomeConta.get(e.alvo) ?? e.alvo}` : "Stripe · histórico"}</td>
+                  <td>{oQue(e.tipo, e.alvo)}</td>
                   <td>{MODO[e.modo]}</td>
                   <td>
                     <Etiqueta tom={STATUS[e.status].tom}>{STATUS[e.status].rotulo}</Etiqueta>

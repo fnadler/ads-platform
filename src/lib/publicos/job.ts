@@ -62,13 +62,26 @@ export async function executarPublico(admin: SupabaseClient, s: Sincronizacao): 
     if (publico.tipo === "funil") {
       const d = DefinicaoFunil.parse(publico.definicao);
       const { schema, lotes, total } = lotesListaClientes(await membrosDoFunil(admin, s.organizacao_id, d.segmento, d.dias));
+      if (!total) {
+        // A Meta não aceita lista vazia: nada é enviado (a lista anterior, se houver, fica como estava).
+        await atualizar({
+          situacao: "pronto",
+          erro: null,
+          meta_tamanho: { min: 0, max: 0, situacao: "Nenhum cliente neste segmento ainda: nada foi enviado. A lista é enviada na próxima atualização em que houver alguém.", em: new Date().toISOString() },
+        });
+        return { status: "pronto", linhas: 0 };
+      }
       await meta.substituirListaClientes(audienceId, schema, lotes, total);
       linhas = total;
       await atualizar({ enviado_em: new Date().toISOString() });
     }
 
     const tamanho = await lerPublicoPersonalizado(segredo.token, audienceId).catch(() => null);
-    await atualizar({ situacao: "pronto", erro: null, ...(tamanho ? { meta_tamanho: { min: tamanho.min, max: tamanho.max, situacao: tamanho.entrega ?? tamanho.operacao, em: new Date().toISOString() } } : {}) });
+    await atualizar({
+      situacao: "pronto",
+      erro: null,
+      ...(tamanho ? { meta_tamanho: { min: tamanho.min, max: tamanho.max, enviados: publico.tipo === "funil" ? linhas : undefined, situacao: tamanho.entrega ?? tamanho.operacao, em: new Date().toISOString() } } : {}),
+    });
     return { status: "pronto", linhas };
   } catch (e) {
     let msg = e instanceof Error ? e.message : String(e);

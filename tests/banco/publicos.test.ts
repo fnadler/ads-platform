@@ -54,6 +54,18 @@ describe("segmentos do funil", () => {
   });
 });
 
+describe("pagantes pelas vendas", () => {
+  it("lead com venda paga ligada entra em pagantes mesmo sem o campo preenchido", async () => {
+    await db.query("insert into public.leads (organizacao_id, id_externo, criado_em, email_hash, teste_iniciado_em) values ($1, 'pagou-depois', now(), 'h-pd', now())", [org]);
+    await db.query("insert into public.vendas (organizacao_id, origem, id_externo, valor, ocorrida_em, lead_id_externo) values ($1, 'stripe', 'in_x', 19.9, now(), 'pagou-depois')", [org]);
+    await db.query("insert into public.leads (organizacao_id, id_externo, criado_em, email_hash) values ($1, 'por-email', now(), 'h-email')", [org]);
+    await db.query("insert into public.vendas (organizacao_id, origem, id_externo, valor, ocorrida_em, email_hash) values ($1, 'csv', 'p1', 50, now(), 'h-email')", [org]);
+    expect(await segmento("pagantes")).toEqual(["h-email", "h-pagou", "h-pd"]);
+    expect(await segmento("teste_sem_pagamento")).toEqual(["h-teste"]);
+    expect(await segmento("cadastrados_sem_teste")).not.toContain("h-email");
+  });
+});
+
 describe("públicos", () => {
   it("gestor cria; leitura e outra organização não", async () => {
     const criar = (u: typeof gestor) =>

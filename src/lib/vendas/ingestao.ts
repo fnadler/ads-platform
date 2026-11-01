@@ -141,6 +141,23 @@ export async function processarEvento(ctx: Contexto, e: Evento): Promise<void> {
       id_externo: e.id_externo,
       criado_em: em(e.ocorrido_em),
     });
+    // Venda que chegou antes do cadastro (ex.: importação do Stripe): o lead já nasce pagante.
+    const { data: venda } = await ctx.admin
+      .from("vendas")
+      .select("ocorrida_em")
+      .eq("organizacao_id", ctx.organizacaoId)
+      .eq("lead_id_externo", e.id_externo)
+      .eq("tipo", "pagamento")
+      .order("ocorrida_em")
+      .limit(1)
+      .maybeSingle();
+    if (venda)
+      await ctx.admin
+        .from("leads")
+        .update({ primeiro_pagamento_em: venda.ocorrida_em })
+        .eq("organizacao_id", ctx.organizacaoId)
+        .eq("id_externo", e.id_externo)
+        .is("primeiro_pagamento_em", null);
     await registrarEvento(ctx, `lead:${e.id_externo}`, e);
     return;
   }
