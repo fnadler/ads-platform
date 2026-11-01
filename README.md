@@ -125,7 +125,7 @@ Regras de segurança:
 - toda chamada à Meta fica registrada em `operacoes_meta` e aparece na página da campanha.
 
 Pré-requisitos, em **Configurações → Meta (publicação)**:
-- **Token:** gere um token do usuário do sistema com `ads_management` e `ads_read`. Ele é separado do token de leitura, então dá para revogar um sem afetar o outro.
+- **Token:** gere um token do usuário do sistema com `ads_management`, `ads_read`, `pages_show_list`, `pages_read_engagement` e `instagram_basic`. Sem as três últimas, a Meta devolve vazias as listas de Página e Instagram. Ele é separado do token de leitura, então dá para revogar um sem afetar o outro.
 - **Acessos do usuário do sistema:** "Gerenciar campanhas" na conta de anúncios e acesso à Página (e ao Instagram) da marca.
 - **Escolhas na tela:** Página, Instagram, conjunto de dados e teto de verba, a partir das listas que o sistema lê da Meta.
 

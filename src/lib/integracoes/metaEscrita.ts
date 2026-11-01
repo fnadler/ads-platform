@@ -146,10 +146,22 @@ export async function lerPrerequisitos(token: string, accountId: string): Promis
   const conta = await cli
     .get<{ id: string; name?: string; currency?: string; timezone_name?: string; account_status?: number }>(accountId, { fields: "id,name,currency,timezone_name,account_status" })
     .catch(() => null);
-  const paginas = await cli.get<{ data?: Array<{ id: string; name?: string }> }>(`${accountId}/promote_pages`, { fields: "id,name", limit: "100" }).catch(() => ({ data: [] }));
-  const instagram = await cli
+  // Páginas: as que a conta pode promover e as atribuídas ao usuário do sistema (esta traz também o Instagram
+  // ligado a cada Página). Listar Páginas exige pages_show_list no token; Instagram, instagram_basic — sem
+  // elas a Meta devolve lista vazia, sem erro.
+  type PaginaBruta = { id: string; name?: string; instagram_business_account?: { id: string; username?: string } };
+  const promoviveis = await cli.get<{ data?: PaginaBruta[] }>(`${accountId}/promote_pages`, { fields: "id,name", limit: "100" }).catch(() => ({ data: [] as PaginaBruta[] }));
+  const doUsuario = await cli
+    .get<{ data?: PaginaBruta[] }>("me/accounts", { fields: "id,name,instagram_business_account{id,username}", limit: "100" })
+    .catch(() => ({ data: [] as PaginaBruta[] }));
+  const paginas = new Map<string, { id: string; nome: string }>();
+  for (const pg of [...(promoviveis.data ?? []), ...(doUsuario.data ?? [])]) paginas.set(pg.id, { id: pg.id, nome: pg.name ?? pg.id });
+  const contaIg = await cli
     .get<{ data?: Array<{ id: string; username?: string }> }>(`${accountId}/instagram_accounts`, { fields: "id,username", limit: "100" })
     .catch(() => ({ data: [] }));
+  const instagram = new Map<string, { id: string; nome: string }>();
+  for (const ig of [...(contaIg.data ?? []), ...(doUsuario.data ?? []).flatMap((pg) => (pg.instagram_business_account ? [pg.instagram_business_account] : []))])
+    instagram.set(ig.id, { id: ig.id, nome: ig.username ? `@${ig.username}` : ig.id });
   const pixels = await cli
     .get<{ data?: Array<{ id: string; name?: string; last_fired_time?: string }> }>(`${accountId}/adspixels`, { fields: "id,name,last_fired_time", limit: "100" })
     .catch(() => ({ data: [] }));
@@ -166,8 +178,8 @@ export async function lerPrerequisitos(token: string, accountId: string): Promis
           motivo: conta.account_status && conta.account_status !== 1 ? STATUS_CONTA[conta.account_status] ?? `status ${conta.account_status}` : undefined,
         }
       : null,
-    paginas: (paginas.data ?? []).map((p) => ({ id: p.id, nome: p.name ?? p.id })),
-    instagram: (instagram.data ?? []).map((i) => ({ id: i.id, nome: i.username ? `@${i.username}` : i.id })),
+    paginas: [...paginas.values()],
+    instagram: [...instagram.values()],
     pixels: (pixels.data ?? []).map((p) => ({ id: p.id, nome: p.name ?? p.id, ultimoEvento: p.last_fired_time ?? null })),
   };
 }

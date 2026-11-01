@@ -40,7 +40,10 @@ export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: strin
           <summary className="cursor-pointer text-sm font-medium">{conexao ? "Trocar o token de publicação" : "Conectar"}</summary>
           <ol className="my-3 list-decimal space-y-1 pl-5 text-sm text-suave">
             <li>No Business Manager, no usuário do sistema: em Atribuir ativos, dê à conta de anúncios a permissão “Gerenciar campanhas” e atribua a Página do Facebook (e a conta do Instagram) da marca.</li>
-            <li>“Gerar token” com o mesmo app, validade “Nunca”, marcando <code>ads_management</code> e <code>ads_read</code>.</li>
+            <li>
+              “Gerar token” com o mesmo app, validade “Nunca”, marcando <code>ads_management</code>, <code>ads_read</code>, <code>pages_show_list</code>,{" "}
+              <code>pages_read_engagement</code> e <code>instagram_basic</code> (as três últimas permitem listar a Página e o Instagram).
+            </li>
             <li>Cole abaixo. O token de leitura continua separado: dá para revogar um sem afetar o outro.</li>
           </ol>
           <Formulario acao={conectarPublicacao} rotulo="Validar e salvar">
@@ -80,8 +83,20 @@ export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: strin
                 ))}
               </Selecao>
               <Campo rotulo="Teto de verba diária por campanha (R$)" name="teto_verba_diaria" type="number" min="1" step="1" defaultValue={Number(config.teto_verba_diaria)} required ajuda="O assistente não deixa criar campanha acima disto." />
-              {!p.paginas.length && <Aviso tom="alerta">Nenhuma Página disponível: atribua a Página ao usuário do sistema.</Aviso>}
-              {!p.instagram.length && <Aviso tom="info">Nenhuma conta do Instagram conectada à conta de anúncios: os anúncios saem pela Página do Facebook.</Aviso>}
+              {!p.paginas.length && (
+                <Aviso tom="alerta" className="sm:col-span-2">
+                  Nenhuma Página disponível.{" "}
+                  {p.permissoes.includes("pages_show_list")
+                    ? "Atribua a Página ao usuário do sistema (Contas → Páginas → Atribuir pessoas → Usuários do sistema, com permissão de Anúncios)."
+                    : "O token não tem a permissão pages_show_list, sem a qual a Meta não lista Páginas: gere um token novo marcando pages_show_list, pages_read_engagement e instagram_basic, e cole acima."}
+                </Aviso>
+              )}
+              {!p.instagram.length && (
+                <Aviso tom="info" className="sm:col-span-2">
+                  Nenhuma conta do Instagram disponível
+                  {p.permissoes.includes("instagram_basic") ? "" : " (o token não tem a permissão instagram_basic)"}. Sem ela, os anúncios saem pela Página do Facebook.
+                </Aviso>
+              )}
             </Formulario>
           ) : (
             <dl className="grid gap-1 sm:grid-cols-2">

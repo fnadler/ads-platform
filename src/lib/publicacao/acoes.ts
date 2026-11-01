@@ -35,6 +35,7 @@ export async function conectarPublicacao(_: Resultado, dados: FormData): Promise
     if (!p.permissoes.includes("ads_management"))
       return { erro: `O token não tem a permissão ads_management (tem: ${p.permissoes.join(", ") || "nenhuma"}). Gere outro marcando ads_management.` };
     if (!p.conta) return { erro: `O token não enxerga a conta ${conta.account_id}. Atribua a conta ao usuário do sistema com “Gerenciar campanhas”.` };
+    const faltando = ["pages_show_list", "pages_read_engagement"].filter((x) => !p.permissoes.includes(x));
 
     const { data: conexao, error } = await admin
       .from("conexoes")
@@ -66,7 +67,11 @@ export async function conectarPublicacao(_: Resultado, dados: FormData): Promise
     }
     await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "conexao.meta_publicacao", p_detalhes: { usuario_meta: p.usuario.nome } });
     refresh();
-    return { mensagem: `Conectado como ${p.usuario.nome ?? p.usuario.id}. Confira abaixo a Página, o Instagram e o conjunto de dados.` };
+    return {
+      mensagem: faltando.length
+        ? `Conectado como ${p.usuario.nome ?? p.usuario.id}, mas o token não tem ${faltando.join(" e ")}: sem isso a Meta não lista as Páginas. Gere o token marcando também essas permissões (e instagram_basic).`
+        : `Conectado como ${p.usuario.nome ?? p.usuario.id}. Confira abaixo a Página, o Instagram e o conjunto de dados.`,
+    };
   } catch (e) {
     return { erro: mensagem(e) };
   }
