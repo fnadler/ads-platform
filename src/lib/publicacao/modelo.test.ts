@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { avaliarParametros } from "@/lib/rastreio/regras";
-import { horarioComFuso, menorUnidade, payloadAnuncio, payloadCampanha, payloadConjunto, payloadCriativo, validarRascunho, type ConfigPublicacao, type CriativoRascunho } from "./modelo";
+import type { Publico } from "@/lib/publicos/modelo";
+import { horarioComFuso, menorUnidade, nomeConjunto, payloadAnuncio, payloadCampanha, payloadConjunto, payloadCriativo, planoConjuntos, validarRascunho, type ConfigPublicacao, type CriativoRascunho } from "./modelo";
 
 const config: ConfigPublicacao = { account_id: "act_1", page_id: "111", instagram_user_id: "222", pixel_id: "333", teto_verba_diaria: 100 };
 const bruto = {
@@ -45,7 +46,7 @@ describe("payloads", () => {
   });
 
   it("conjunto: pixel + evento, atribuição 7d/1d, verba em centavos, início com fuso", () => {
-    const c = payloadConjunto("GN | Teste", "cmp1", r, config, "BRL", "America/Sao_Paulo");
+    const c = payloadConjunto(nomeConjunto("GN | Teste", r), "cmp1", r, config, "BRL", "America/Sao_Paulo");
     expect(c).toMatchObject({
       status: "PAUSED",
       daily_budget: 5000,
@@ -110,5 +111,49 @@ describe("conversões", () => {
     expect(horarioComFuso("2026-07-01T09:30", "Europe/Lisbon")).toBe("2026-07-01T09:30:00+01:00");
     expect(menorUnidade(21.5, "BRL")).toBe(2150);
     expect(menorUnidade(1000, "JPY")).toBe(1000);
+  });
+});
+
+describe("públicos na campanha", () => {
+  const colecionadores: Publico = {
+    id: "11111111-1111-4111-8111-111111111111",
+    nome: "Colecionadores Copa",
+    tipo: "detalhado",
+    situacao: "pronto",
+    meta_audience_id: null,
+    definicao: { paises: ["BR"], idade_min: 18, idade_max: 50, genero: "todos", advantage: true, interesses: [{ id: "6003", nome: "Coleção (hobbies)" }] },
+  };
+  const pagantes: Publico = { id: "22222222-2222-4222-8222-222222222222", nome: "Pagantes", tipo: "funil", situacao: "pronto", meta_audience_id: "9001", definicao: { segmento: "pagantes" } };
+  const naoEnviado: Publico = { ...pagantes, id: "33333333-3333-4333-8333-333333333333", nome: "Testando", meta_audience_id: null };
+  const todos = [colecionadores, pagantes, naoEnviado];
+
+  it("um conjunto por público, com interesses como sugestão e exclusão dos pagantes", () => {
+    const v = validarRascunho({ ...bruto, publicos: [colecionadores.id], excluir: [pagantes.id] }, [criativo], config, "America/Sao_Paulo", agora, todos);
+    expect(v.problemas).toEqual([]);
+    const plano = planoConjuntos("GN", v.rascunho!, todos);
+    expect(plano.map((p) => p.nome)).toEqual(["GN | Colecionadores Copa"]);
+    const c = payloadConjunto(plano[0].nome, "cmp", v.rascunho!, config, "BRL", "America/Sao_Paulo", plano[0].publico, ["9001"]);
+    expect(c.targeting).toMatchObject({
+      flexible_spec: [{ interests: [{ id: "6003", name: "Coleção (hobbies)" }] }],
+      targeting_automation: { advantage_audience: 1 },
+      age_max: 65,
+      excluded_custom_audiences: [{ id: "9001" }],
+    });
+    expect(c).toHaveProperty("daily_budget", 5000);
+  });
+
+  it("com vários públicos, orçamento vai para a campanha e sai dos conjuntos", () => {
+    const v = validarRascunho({ ...bruto, publicos: [colecionadores.id, pagantes.id] }, [criativo], config, "America/Sao_Paulo", agora, todos).rascunho!;
+    expect(payloadCampanha("GN", v, "BRL", true)).toMatchObject({ daily_budget: 5000, bid_strategy: "LOWEST_COST_WITHOUT_CAP" });
+    const c = payloadConjunto("GN | Pagantes", "cmp", v, config, "BRL", "America/Sao_Paulo", pagantes, [], true);
+    expect(c).not.toHaveProperty("daily_budget");
+    expect(c.targeting).toMatchObject({ custom_audiences: [{ id: "9001" }], targeting_automation: { advantage_audience: 0 } });
+  });
+
+  it("acusa público não enviado à Meta e incluído e excluído ao mesmo tempo", () => {
+    const v = validarRascunho({ ...bruto, publicos: [naoEnviado.id, pagantes.id], excluir: [pagantes.id] }, [criativo], config, "America/Sao_Paulo", agora, todos);
+    const textos = v.problemas.map((p) => p.texto).join(" | ");
+    expect(textos).toMatch(/ainda não foi criado na Meta/);
+    expect(textos).toMatch(/incluído e excluído/);
   });
 });

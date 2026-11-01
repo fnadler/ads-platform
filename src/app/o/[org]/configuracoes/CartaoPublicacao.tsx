@@ -1,14 +1,16 @@
 import { Formulario } from "@/components/Formulario";
 import { Aviso, Campo, Cartao, Etiqueta, Selecao } from "@/components/ui";
 import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
-import { lerPrerequisitos, type Prerequisitos } from "@/lib/integracoes/metaEscrita";
+import { lerPrerequisitos, linkTermosPublicos, type Prerequisitos } from "@/lib/integracoes/metaEscrita";
+import { dataHora } from "@/lib/formato";
+import { aceitarPublicosClientes } from "@/lib/publicos/acoes";
 import { conectarPublicacao, salvarConfigPublicacao } from "@/lib/publicacao/acoes";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Conexão de publicação (assistente de campanhas): token próprio com ads_management, separado do de
 // leitura, e a escolha de Página, Instagram, conjunto de dados e teto de verba — lidos da Meta na hora.
-export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: string; dono: boolean; supabase: SupabaseClient }) {
+export async function CartaoPublicacao({ orgId, dono, supabase, fuso }: { orgId: string; dono: boolean; supabase: SupabaseClient; fuso: string }) {
   const [{ data: conexao }, { data: config }] = await Promise.all([
     supabase.from("conexoes").select("id, status, ultimo_erro, config").eq("organizacao_id", orgId).eq("tipo", "meta_publicacao").maybeSingle(),
     supabase.from("config_publicacao").select("*").eq("organizacao_id", orgId).maybeSingle(),
@@ -117,6 +119,42 @@ export async function CartaoPublicacao({ orgId, dono, supabase }: { orgId: strin
                 <dd>{Number(config.teto_verba_diaria).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</dd>
               </div>
             </dl>
+          )}
+        </div>
+      )}
+      {config && (
+        <div className="mt-6 border-t border-line pt-5">
+          <h3 className="text-base font-[550] text-ink">Públicos com dados de clientes</h3>
+          <p className="mt-1 max-w-3xl text-sm text-ink-2">
+            Permite criar na Meta públicos a partir dos seus leads e vendas (ex.: excluir quem já paga, reconquistar quem não terminou o cadastro). Só vão para a Meta e-mail e telefone
+            criptografados (hash SHA-256), nunca em claro. Ao autorizar, você confirma que a política de privacidade do seu site informa esse uso para anúncios.
+          </p>
+          {config.aceite_publicos_clientes_em ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Etiqueta tom="ok">Autorizado em {dataHora(config.aceite_publicos_clientes_em, fuso)}</Etiqueta>
+              {dono && (
+                <Formulario acao={aceitarPublicosClientes} rotulo="Revogar" variante="perigo" confirmar="Revogar? As listas de clientes deixam de ser atualizadas na Meta.">
+                  {hidden}
+                  <input type="hidden" name="aceite" value="nao" />
+                </Formulario>
+              )}
+            </div>
+          ) : dono ? (
+            <Formulario acao={aceitarPublicosClientes} rotulo="Autorizar" variante="secundario" className="mt-3 flex flex-col gap-3">
+              {hidden}
+              <input type="hidden" name="aceite" value="sim" />
+            </Formulario>
+          ) : (
+            <p className="mt-3 text-sm text-ink-3">Só o dono da organização autoriza.</p>
+          )}
+          {config.account_id && (
+            <p className="mt-3 text-xs text-ink-3">
+              A Meta também exige que a conta de anúncios aceite os termos de público personalizado, uma vez:{" "}
+              <a href={linkTermosPublicos(config.account_id)} target="_blank" rel="noreferrer">
+                aceitar os termos na Meta
+              </a>
+              .
+            </p>
           )}
         </div>
       )}

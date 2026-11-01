@@ -123,6 +123,32 @@ export class ClienteMetaEscrita {
   async ativar(objetoId: string) {
     return this.post<{ success?: boolean }>(objetoId, { status: "ACTIVE" });
   }
+
+  /** Cria um público personalizado (lista de clientes, visitantes do site ou semelhante). */
+  async criarPublico(accountId: string, payload: Record<string, unknown>) {
+    const r = await this.post<{ id?: string }>(`${accountId}/customaudiences`, payload);
+    if (!r.id) throw new ErroMeta("A Meta não devolveu o id do público criado.");
+    return r.id;
+  }
+
+  /**
+   * Troca a lista inteira do público (usersreplace, em sessão de lotes). Só hashes SHA-256 vão para a Meta, e
+   * a auditoria registra a contagem, nunca os hashes.
+   */
+  async substituirListaClientes(audienceId: string, schema: string[], lotes: string[][][], total: number) {
+    const sessao = Math.floor(Date.now() / 1000) * 1000 + Math.floor(Math.random() * 1000);
+    const envio = lotes.length ? lotes : [[]];
+    for (const [i, dados] of envio.entries()) {
+      await this.post(
+        `${audienceId}/usersreplace`,
+        {
+          session: { session_id: sessao, batch_seq: i + 1, last_batch_flag: i === envio.length - 1, estimated_num_total: total },
+          payload: { schema, data: dados },
+        },
+        { registrar: { lote: i + 1, de: envio.length, registros: dados.length, total } },
+      );
+    }
+  }
 }
 
 // ───────────────────────────── Pré-requisitos ─────────────────────────────
@@ -183,3 +209,66 @@ export async function lerPrerequisitos(token: string, accountId: string): Promis
     pixels: (pixels.data ?? []).map((p) => ({ id: p.id, nome: p.name ?? p.id, ultimoEvento: p.last_fired_time ?? null })),
   };
 }
+
+// ───────────────────────────── Públicos ─────────────────────────────
+
+export interface InteresseMeta {
+  id: string;
+  nome: string;
+  caminho: string;
+  tamanho: number | null;
+}
+
+/** Busca de interesses (imprecisa: quem confirma é a pessoa). Tamanho = limite inferior mundial da Meta. */
+export async function buscarInteresses(token: string, termo: string): Promise<InteresseMeta[]> {
+  const r = await getMeta<{ data?: Array<{ id: string; name: string; path?: string[]; audience_size_lower_bound?: number }> }>(token, "search", {
+    type: "adinterest",
+    q: termo,
+    locale: "pt_BR",
+    limit: "8",
+  });
+  return (r.data ?? []).map((i) => ({ id: i.id, nome: i.name, caminho: (i.path ?? []).slice(0, -1).join(" › "), tamanho: i.audience_size_lower_bound ?? null }));
+}
+
+/** Estados (regiões) do país para o direcionamento por local. */
+export async function buscarRegioes(token: string, termo: string, pais = "BR") {
+  const r = await getMeta<{ data?: Array<{ key: string; name: string; type?: string }> }>(token, "search", {
+    type: "adgeolocation",
+    location_types: JSON.stringify(["region"]),
+    country_code: pais,
+    q: termo,
+    locale: "pt_BR",
+    limit: "8",
+  });
+  return (r.data ?? []).map((g) => ({ key: g.key, nome: g.name }));
+}
+
+/** Alcance mensal estimado do direcionamento, para o evento que a campanha otimiza. */
+export async function estimarAlcance(token: string, accountId: string, targeting: object, pixelId: string | null, evento = "COMPLETE_REGISTRATION") {
+  const r = await getMeta<{ data?: Array<{ estimate_mau_lower_bound?: number; estimate_mau_upper_bound?: number; estimate_ready?: boolean }> }>(token, `${accountId}/delivery_estimate`, {
+    targeting_spec: JSON.stringify(targeting),
+    optimization_goal: "OFFSITE_CONVERSIONS",
+    ...(pixelId ? { promoted_object: JSON.stringify({ pixel_id: pixelId, custom_event_type: evento }) } : {}),
+  });
+  const e = r.data?.[0];
+  return { min: e?.estimate_mau_lower_bound ?? null, max: e?.estimate_mau_upper_bound ?? null };
+}
+
+/** Tamanho e situação de um público personalizado na Meta. */
+export async function lerPublicoPersonalizado(token: string, audienceId: string) {
+  const r = await getMeta<{
+    approximate_count_lower_bound?: number;
+    approximate_count_upper_bound?: number;
+    operation_status?: { code?: number; description?: string };
+    delivery_status?: { code?: number; description?: string };
+  }>(token, audienceId, { fields: "approximate_count_lower_bound,approximate_count_upper_bound,operation_status,delivery_status" });
+  return {
+    min: r.approximate_count_lower_bound ?? null,
+    max: r.approximate_count_upper_bound ?? null,
+    operacao: r.operation_status?.description ?? null,
+    entrega: r.delivery_status?.description ?? null,
+  };
+}
+
+/** Link para aceitar os termos de público personalizado da conta (exigido pela Meta para listas de clientes). */
+export const linkTermosPublicos = (accountId: string) => `https://business.facebook.com/ads/manage/customaudiences/tos/?act=${accountId.replace("act_", "")}`;

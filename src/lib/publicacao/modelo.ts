@@ -3,6 +3,7 @@
 // atribuição 7d clique/1d visualização, Parâmetros de URL, nomes); a pessoa só decide verba, datas,
 // público básico, destino e criativos. Mudou um campo obrigatório da Meta: é aqui que se ajusta.
 import { z } from "zod";
+import { prontoParaUsar, targetingDoPublico, type Publico } from "@/lib/publicos/modelo";
 import { PARAMETROS_META } from "@/lib/rastreio/regras";
 
 export const EVENTOS = {
@@ -43,6 +44,10 @@ export const Rascunho = z.object({
   idade_min: z.coerce.number().int().min(18).max(65).default(18),
   idade_max: z.coerce.number().int().min(18).max(65).default(65),
   publico_advantage: z.boolean().default(true),
+  // Públicos salvos: um conjunto de anúncios por público. Vazio = “público rápido” (os campos acima).
+  publicos: z.array(z.uuid()).max(5, "No máximo 5 públicos por campanha.").default([]),
+  // Públicos personalizados excluídos de todos os conjuntos (ex.: pagantes).
+  excluir: z.array(z.uuid()).max(5).default([]),
   url_destino: z.url("Informe a página de destino (https://…)."),
 });
 export type Rascunho = z.infer<typeof Rascunho>;
@@ -103,6 +108,7 @@ export function validarRascunho(
   config: ConfigPublicacao | null,
   fuso: string,
   agora = new Date(),
+  publicos: Publico[] = [],
 ): { rascunho: Rascunho | null; problemas: Problema[] } {
   const problemas: Problema[] = [];
   const v = Rascunho.safeParse(bruto);
@@ -135,6 +141,20 @@ export function validarRascunho(
     if (/[?&]utm_/.test(r.url_destino))
       problemas.push({ campo: "url_destino", texto: "Tire os utm_ da página de destino: o sistema acrescenta os Parâmetros de URL sozinho." });
   }
+  if (r) {
+    const porId = new Map(publicos.map((p) => [p.id, p]));
+    for (const id of r.publicos) {
+      const p = porId.get(id);
+      const motivo = p ? prontoParaUsar(p) : "Um dos públicos escolhidos não existe mais.";
+      if (motivo) problemas.push({ campo: "publicos", texto: motivo });
+    }
+    for (const id of r.excluir) {
+      const p = porId.get(id);
+      if (!p || p.tipo === "detalhado") problemas.push({ campo: "excluir", texto: "Só públicos de clientes, site ou semelhantes podem ser excluídos." });
+      else if (!p.meta_audience_id) problemas.push({ campo: "excluir", texto: `“${p.nome}” ainda não foi criado na Meta.` });
+      if (r.publicos.includes(id)) problemas.push({ campo: "excluir", texto: `“${p?.nome ?? "Um público"}” está ao mesmo tempo incluído e excluído.` });
+    }
+  }
   if (!criativos.length) problemas.push({ campo: "criativos", texto: "Envie pelo menos um criativo (vídeo ou imagem)." });
   if (criativos.length > LIMITE_CRIATIVOS) problemas.push({ campo: "criativos", texto: `No máximo ${LIMITE_CRIATIVOS} criativos por campanha.` });
   const nomes = new Set<string>();
@@ -150,42 +170,68 @@ export function validarRascunho(
 
 // ───────────────────────────── Objetos da Meta ─────────────────────────────
 
-export function payloadCampanha(nome: string) {
+/** Orçamento na Meta (diário ou total), na menor unidade da moeda. */
+const orcamento = (r: Rascunho, moeda: string) =>
+  r.tipo_orcamento === "total" ? { lifetime_budget: menorUnidade(r.verba_total, moeda) } : { daily_budget: menorUnidade(r.verba_diaria, moeda) };
+
+/**
+ * Campanha. Com mais de um conjunto (um por público), o orçamento fica na campanha e a Meta distribui
+ * entre os públicos (orçamento de campanha Advantage+); com um só, fica no conjunto, como antes.
+ */
+export function payloadCampanha(nome: string, r?: Rascunho, moeda = "BRL", orcamentoNaCampanha = false) {
   return {
     name: nome,
     objective: "OUTCOME_LEADS",
     buying_type: "AUCTION",
     special_ad_categories: [] as string[],
-    is_adset_budget_sharing_enabled: false,
+    ...(orcamentoNaCampanha && r ? { ...orcamento(r, moeda), bid_strategy: "LOWEST_COST_WITHOUT_CAP" } : { is_adset_budget_sharing_enabled: false }),
     status: "PAUSED",
   };
 }
 
-export const nomeConjunto = (nome: string, r: Rascunho) =>
-  `${nome} | ${r.paises.join("+")} ${r.idade_min}-${r.idade_max}${r.publico_advantage ? " | Advantage+" : ""}`;
+export const nomeConjunto = (nome: string, r: Rascunho, publico?: Publico | null) =>
+  publico
+    ? `${nome} | ${publico.nome}`
+    : `${nome} | ${r.paises.join("+")} ${r.idade_min}-${r.idade_max}${r.publico_advantage ? " | Advantage+" : ""}`;
 
-export function payloadConjunto(nome: string, campaignId: string, r: Rascunho, config: ConfigPublicacao, moeda: string, fuso: string) {
+export interface PlanoConjunto {
+  publico: Publico | null;
+  nome: string;
+}
+
+/** Um conjunto por público escolhido (na ordem escolhida); sem público, um conjunto com o público rápido. */
+export function planoConjuntos(nome: string, r: Rascunho, publicos: Publico[]): PlanoConjunto[] {
+  const porId = new Map(publicos.map((p) => [p.id, p]));
+  const escolhidos = r.publicos.map((id) => porId.get(id)).filter((p): p is Publico => !!p);
+  return escolhidos.length ? escolhidos.map((p) => ({ publico: p, nome: nomeConjunto(nome, r, p) })) : [{ publico: null, nome: nomeConjunto(nome, r) }];
+}
+
+export function payloadConjunto(
+  nomeDoConjunto: string,
+  campaignId: string,
+  r: Rascunho,
+  config: ConfigPublicacao,
+  moeda: string,
+  fuso: string,
+  publico: Publico | null = null,
+  excluirMetaIds: string[] = [],
+  orcamentoNaCampanha = false,
+) {
   return {
-    name: nomeConjunto(nome, r),
+    name: nomeDoConjunto,
     campaign_id: campaignId,
     status: "PAUSED",
-    ...(r.tipo_orcamento === "total" ? { lifetime_budget: menorUnidade(r.verba_total, moeda) } : { daily_budget: menorUnidade(r.verba_diaria, moeda) }),
+    ...(orcamentoNaCampanha ? {} : orcamento(r, moeda)),
     billing_event: "IMPRESSIONS",
     optimization_goal: "OFFSITE_CONVERSIONS",
-    bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+    ...(orcamentoNaCampanha ? {} : { bid_strategy: "LOWEST_COST_WITHOUT_CAP" }),
     destination_type: "WEBSITE",
     promoted_object: { pixel_id: config.pixel_id, custom_event_type: r.evento },
     attribution_spec: [
       { event_type: "CLICK_THROUGH", window_days: 7 },
       { event_type: "VIEW_THROUGH", window_days: 1 },
     ],
-    targeting: {
-      geo_locations: { countries: r.paises },
-      age_min: r.idade_min,
-      // Com o público Advantage+, a idade vira sugestão e a Meta exige o máximo em 65.
-      age_max: r.publico_advantage ? 65 : r.idade_max,
-      targeting_automation: { advantage_audience: r.publico_advantage ? 1 : 0 },
-    },
+    targeting: targetingDoPublico(publico, { paises: r.paises, idade_min: r.idade_min, idade_max: r.idade_max, advantage: r.publico_advantage }, excluirMetaIds),
     start_time: horarioComFuso(r.inicio, fuso),
     ...(r.fim ? { end_time: horarioComFuso(r.fim, fuso) } : {}),
   };

@@ -178,6 +178,8 @@ export async function salvarRascunho(_: Resultado, dados: FormData): Promise<Res
       idade_min: Number(dados.get("idade_min") ?? 18),
       idade_max: Number(dados.get("idade_max") ?? 65),
       publico_advantage: dados.get("publico_advantage") === "on",
+      publicos: dados.getAll("publicos").map(String),
+      excluir: dados.getAll("excluir").map(String),
       url_destino: String(dados.get("url_destino") ?? "").trim(),
     };
     const { error, count } = await supabase
@@ -308,7 +310,7 @@ export async function validarNaMeta(_: Resultado, dados: FormData): Promise<Resu
     const { usuario } = await acessoOrganizacao(orgId, "gestor");
     const admin = criarClienteAdmin();
     const ctx = await carregarContextoPublicacao(admin, orgId, id);
-    const { problemas } = validarRascunho(ctx.campanha.rascunho, ctx.criativos, ctx.config, ctx.fuso);
+    const { problemas } = validarRascunho(ctx.campanha.rascunho, ctx.criativos, ctx.config, ctx.fuso, new Date(), ctx.publicos);
     if (problemas.length) return { erro: problemas.map((p) => p.texto).join(" ") };
     const p = await lerPrerequisitos(ctx.token, ctx.config!.account_id!);
     const avisos: string[] = [];
@@ -319,7 +321,8 @@ export async function validarNaMeta(_: Resultado, dados: FormData): Promise<Resu
     if (!pixel) return { erro: "O conjunto de dados escolhido não está conectado à conta de anúncios." };
     if (!pixel.ultimoEvento || Date.now() - Date.parse(pixel.ultimoEvento) > 7 * 86_400_000) avisos.push("o conjunto de dados não recebe eventos há mais de 7 dias");
     const meta = new ClienteMetaEscrita({ token: ctx.token, admin, organizacaoId: orgId, campanhaId: id, usuarioId: usuario.id });
-    await meta.criar(ctx.config!.account_id!, "campaigns", payloadCampanha(ctx.campanha.nome), true);
+    const r = validarRascunho(ctx.campanha.rascunho, ctx.criativos, ctx.config, ctx.fuso, new Date(), ctx.publicos).rascunho!;
+    await meta.criar(ctx.config!.account_id!, "campaigns", payloadCampanha(ctx.campanha.nome, r, ctx.moeda, r.publicos.length > 1), true);
     return { mensagem: `Tudo certo: a Meta aceitou a campanha e os pré-requisitos estão ok${avisos.length ? ` (atenção: ${avisos.join("; ")})` : ""}. O conjunto e os anúncios são conferidos pela Meta na criação.` };
   } catch (e) {
     return { erro: e instanceof ErroMeta ? `A Meta recusou: ${e.message}` : mensagem(e) };
@@ -335,7 +338,7 @@ export async function enviarParaMeta(_: Resultado, dados: FormData): Promise<Res
     const admin = criarClienteAdmin();
     const ctx = await carregarContextoPublicacao(admin, orgId, id);
     if (!["rascunho", "erro"].includes(ctx.campanha.status)) return { erro: "Esta campanha já está sendo criada ou já foi criada." };
-    const { problemas } = validarRascunho(ctx.campanha.rascunho, ctx.criativos, ctx.config, ctx.fuso, ctx.campanha.meta_campaign_id ? new Date(0) : new Date());
+    const { problemas } = validarRascunho(ctx.campanha.rascunho, ctx.criativos, ctx.config, ctx.fuso, ctx.campanha.meta_campaign_id ? new Date(0) : new Date(), ctx.publicos);
     if (problemas.length) return { erro: problemas.map((p) => p.texto).join(" ") };
     await admin.from("campanhas_assistente").update({ status: "criando", erro: null, atualizado_em: agoraIso() }).eq("id", id).eq("organizacao_id", orgId);
     const { error } = await admin.rpc("enfileirar_sincronizacao", { p_org: orgId, p_tipo: "meta_publicacao", p_alvo: id, p_modo: "manual" });
@@ -357,7 +360,13 @@ export async function ativarCampanha(_: Resultado, dados: FormData): Promise<Res
     const admin = criarClienteAdmin();
     const { data: c } = await admin.from("campanhas_assistente").select("status, meta_campaign_id, meta_adset_id").eq("id", id).eq("organizacao_id", orgId).single();
     if (c?.status !== "criada" || !c.meta_campaign_id || !c.meta_adset_id) return { erro: "Só dá para ativar uma campanha criada e ainda pausada." };
-    const { data: anuncios } = await admin.from("criativos_assistente").select("meta_ad_id").eq("campanha_id", id).not("meta_ad_id", "is", null);
+    const { data: conjuntos } = await admin.from("conjuntos_assistente").select("id, meta_adset_id").eq("campanha_id", id).eq("organizacao_id", orgId).not("meta_adset_id", "is", null);
+    const { data: anuncios } = await admin
+      .from("anuncios_assistente")
+      .select("meta_ad_id")
+      .eq("organizacao_id", orgId)
+      .in("conjunto_id", (conjuntos ?? []).map((c) => c.id))
+      .not("meta_ad_id", "is", null);
     const conexao = await admin.from("conexoes").select("id").eq("organizacao_id", orgId).eq("tipo", "meta_publicacao").single();
     const segredo = conexao.data ? await lerSegredo<SegredoMeta>(admin, orgId, conexao.data.id) : null;
     if (!segredo) return { erro: "Conexão de publicação ausente." };
@@ -365,7 +374,7 @@ export async function ativarCampanha(_: Resultado, dados: FormData): Promise<Res
     const meta = new ClienteMetaEscrita({ token: segredo.token, admin, organizacaoId: orgId, campanhaId: id, usuarioId: usuario.id });
     try {
       for (const a of anuncios ?? []) await meta.ativar(a.meta_ad_id!);
-      await meta.ativar(c.meta_adset_id);
+      for (const cj of conjuntos ?? []) await meta.ativar(cj.meta_adset_id!);
       await meta.ativar(c.meta_campaign_id);
     } catch (e) {
       await admin.from("campanhas_assistente").update({ status: "criada", erro: `Falha ao ativar: ${mensagem(e)}`, atualizado_em: agoraIso() }).eq("id", id);

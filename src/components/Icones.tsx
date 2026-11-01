@@ -135,3 +135,15 @@ export const IconeExterno = (p: P) => (
     <path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
   </Base>
 );
+export const IconePublicos = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="9" r="3.5" />
+    <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+    <circle cx="12" cy="12" r="10" />
+  </Base>
+);
+export const IconeMais = (p: P) => (
+  <Base {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Base>
+);

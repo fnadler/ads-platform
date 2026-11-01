@@ -3,6 +3,7 @@ import { marcarErroConexao } from "@/lib/conexoes/segredos";
 import { ErroLimiteMeta, ErroMeta } from "@/lib/integracoes/meta";
 import { executarSincronizacaoMeta } from "@/lib/meta/sincronizacao";
 import { executarPublicacao } from "@/lib/publicacao/job";
+import { executarPublico } from "@/lib/publicos/job";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { executarHistoricoStripe } from "@/lib/vendas/historicoStripe";
 import type { ResultadoJob, Sincronizacao } from "./tipos";
@@ -47,7 +48,7 @@ export async function processarFila(prazoMs: number) {
 
     let resultado: string;
     try {
-      const executar = { meta: executarSincronizacaoMeta, stripe_historico: executarHistoricoStripe, meta_publicacao: executarPublicacao }[s.tipo];
+      const executar = { meta: executarSincronizacaoMeta, stripe_historico: executarHistoricoStripe, meta_publicacao: executarPublicacao, meta_publico: executarPublico }[s.tipo];
       const r: ResultadoJob = await executar(admin, s, temTempo);
       if (r.status === "pronto") {
         await admin.from("sincronizacoes").update({ status: "ok", linhas: r.linhas, tentativas: 0, terminado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("id", s.id);
@@ -67,7 +68,7 @@ export async function processarFila(prazoMs: number) {
         s.tentativas + 1 < MAX_TENTATIVAS &&
         !(e instanceof ErroMeta && [190, 200, 10].includes(e.codigo ?? 0)) &&
         // Publicação: erro da Meta (campo recusado, política) não melhora repetindo — vai direto para a tela.
-        !(s.tipo === "meta_publicacao" && e instanceof ErroMeta)
+        !((s.tipo === "meta_publicacao" || s.tipo === "meta_publico") && e instanceof ErroMeta)
       ) {
         await admin.from("sincronizacoes").update({ status: "na_fila", erro: mensagem(e), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: 120 * (s.tentativas + 1) });

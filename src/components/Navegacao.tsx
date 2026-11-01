@@ -10,6 +10,7 @@ import {
   IconeDesempenho,
   IconeInicio,
   IconeLeads,
+  IconePublicos,
   IconeRastreio,
   IconeSincronizar,
 } from "./Icones";
@@ -18,6 +19,7 @@ const ICONES: Record<string, ComponentType<{ tamanho?: number }>> = {
   inicio: IconeInicio,
   desempenho: IconeDesempenho,
   campanhas: IconeCampanhas,
+  publicos: IconePublicos,
   rastreio: IconeRastreio,
   leads: IconeLeads,
   sincronizacoes: IconeSincronizar,
