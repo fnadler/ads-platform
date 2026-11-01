@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Resultado } from "@/components/Formulario";
 import { acessoOrganizacao } from "@/lib/auth/sessao";
 import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
+import { hashEmail } from "@/lib/vendas/ingestao";
 import { buscarInteresses, buscarRegioes, estimarAlcance, type InteresseMeta } from "@/lib/integracoes/metaEscrita";
 import { rotaOrg } from "@/lib/rotas";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
@@ -181,6 +182,28 @@ export async function aceitarPublicosClientes(_: Resultado, dados: FormData): Pr
     await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: aceitar ? "publicos.clientes_autorizado" : "publicos.clientes_revogado", p_detalhes: {} });
     refresh();
     return { mensagem: aceitar ? "Autorizado. Os públicos do funil já podem ser enviados à Meta." : "Autorização revogada. As listas deixam de ser atualizadas." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+/** Direito de oposição: tira um e-mail de todos os públicos (vale na atualização diária seguinte). */
+export async function retirarDosPublicos(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const email = String(dados.get("email") ?? "").trim();
+  if (!email.includes("@")) return { erro: "Informe um e-mail válido." };
+  try {
+    const { supabase } = await acessoOrganizacao(orgId, "dono");
+    const { count, error } = await criarClienteAdmin()
+      .from("leads")
+      .update({ fora_de_publicos_em: new Date().toISOString() }, { count: "exact" })
+      .eq("organizacao_id", orgId)
+      .eq("email_hash", hashEmail(email)!);
+    if (error) return { erro: error.message };
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "publicos.oposicao", p_detalhes: { encontrados: count ?? 0 } });
+    return count
+      ? { mensagem: "Pronto: este e-mail sai das listas na próxima atualização diária (ou agora, se você clicar em “Atualizar agora” nos públicos do funil)." }
+      : { mensagem: "Nenhum lead com este e-mail: ele não está em nenhuma lista." };
   } catch (e) {
     return { erro: mensagem(e) };
   }

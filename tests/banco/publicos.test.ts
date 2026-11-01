@@ -39,6 +39,12 @@ describe("segmentos do funil", () => {
     expect(await segmento("todos")).toEqual(["h-cad", "h-pagou", "h-teste", "h-velho"]);
   });
 
+  it("quem se opôs sai de todas as listas", async () => {
+    await db.query("update public.leads set fora_de_publicos_em = now() where id_externo = 'cadastro'");
+    expect(await segmento("cadastrados_sem_teste")).toEqual(["h-velho"]);
+    await db.query("update public.leads set fora_de_publicos_em = null where id_externo = 'cadastro'");
+  });
+
   it("limita pela data de cadastro", async () => {
     expect(await segmento("cadastrados_sem_teste", 30)).toEqual(["h-cad"]);
   });

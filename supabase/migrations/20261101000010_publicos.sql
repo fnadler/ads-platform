@@ -62,6 +62,9 @@ select cr.organizacao_id, cr.id, cj.id, cr.meta_ad_id
   join public.conjuntos_assistente cj on cj.campanha_id = cr.campanha_id
  where cr.meta_ad_id is not null;
 
+-- Direito de oposição (LGPD): o lead marcado sai de todas as listas na atualização seguinte.
+alter table public.leads add column if not exists fora_de_publicos_em timestamptz;
+
 -- Aceite do dono: usar dados de clientes (hash de e-mail/telefone) em públicos da Meta.
 alter table public.config_publicacao
   add column if not exists aceite_publicos_clientes_em timestamptz,
@@ -88,7 +91,8 @@ create policy "membro lê" on public.conjuntos_assistente for select to authenti
 create policy "membro lê" on public.anuncios_assistente for select to authenticated using (public.eh_membro(organizacao_id));
 
 -- Quem entra num público do funil (hashes já normalizados na entrada: e-mail minúsculo, telefone com 55).
--- Leads de teste de rastreio ficam de fora. dias limita pela data de cadastro (null = todos).
+-- Leads de teste de rastreio e quem se opôs (fora_de_publicos_em) ficam de fora. dias limita pela data de
+-- cadastro (null = todos).
 create function public.membros_publico_funil(p_org uuid, p_segmento text, p_dias integer default null)
 returns table (email_hash text, telefone_hash text)
 language sql stable security definer set search_path = ''
@@ -97,6 +101,7 @@ as $$
     from public.leads l
    where l.organizacao_id = p_org
      and l.codigo_teste is null
+     and l.fora_de_publicos_em is null
      and (l.email_hash is not null or l.telefone_hash is not null)
      and (p_dias is null or l.criado_em >= now() - make_interval(days => p_dias))
      and case p_segmento

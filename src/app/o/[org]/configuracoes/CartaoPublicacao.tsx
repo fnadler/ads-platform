@@ -3,7 +3,7 @@ import { Aviso, Campo, Cartao, Etiqueta, Selecao } from "@/components/ui";
 import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
 import { lerPrerequisitos, linkTermosPublicos, type Prerequisitos } from "@/lib/integracoes/metaEscrita";
 import { dataHora } from "@/lib/formato";
-import { aceitarPublicosClientes } from "@/lib/publicos/acoes";
+import { aceitarPublicosClientes, retirarDosPublicos } from "@/lib/publicos/acoes";
 import { conectarPublicacao, salvarConfigPublicacao } from "@/lib/publicacao/acoes";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -146,6 +146,15 @@ export async function CartaoPublicacao({ orgId, dono, supabase, fuso }: { orgId:
             </Formulario>
           ) : (
             <p className="mt-3 text-sm text-ink-3">Só o dono da organização autoriza.</p>
+          )}
+          {dono && config.aceite_publicos_clientes_em && (
+            <details className="mt-4">
+              <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">Retirar um e-mail dos públicos (pedido de oposição)</summary>
+              <Formulario acao={retirarDosPublicos} rotulo="Retirar das listas" variante="secundario" className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                {hidden}
+                <Campo rotulo="E-mail da pessoa" name="email" type="email" required ajuda="O e-mail não é guardado: o sistema compara o hash." />
+              </Formulario>
+            </details>
           )}
           {config.account_id && (
             <p className="mt-3 text-xs text-ink-3">
