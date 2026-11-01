@@ -7,7 +7,7 @@ import type { Resultado } from "@/components/Formulario";
 import { acessoOrganizacao } from "@/lib/auth/sessao";
 import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
 import { hashEmail } from "@/lib/vendas/ingestao";
-import { buscarInteresses, buscarRegioes, estimarAlcance, type InteresseMeta } from "@/lib/integracoes/metaEscrita";
+import { buscarInteresses, buscarRegioes, estimarAlcance, interessesDescontinuados, type InteresseDescontinuado, type InteresseMeta } from "@/lib/integracoes/metaEscrita";
 import { rotaOrg } from "@/lib/rotas";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { DEFINICOES, DefinicaoDetalhado, targetingDoPublico, type Publico, type TipoPublico } from "./modelo";
@@ -36,8 +36,8 @@ async function credencialMeta(orgId: string) {
 export async function buscarInteressesAcao(orgId: string, termo: string): Promise<InteresseMeta[]> {
   await acessoOrganizacao(orgId, "gestor");
   if (termo.trim().length < 2) return [];
-  const { token } = await credencialMeta(orgId);
-  return buscarInteresses(token, termo.trim());
+  const { token, accountId } = await credencialMeta(orgId);
+  return buscarInteresses(token, termo.trim(), accountId);
 }
 
 export async function buscarRegioesAcao(orgId: string, termo: string) {
@@ -48,7 +48,10 @@ export async function buscarRegioesAcao(orgId: string, termo: string) {
 }
 
 /** Alcance mensal estimado de um público de interesses (sem salvar). */
-export async function estimarAlcanceAcao(orgId: string, definicao: unknown): Promise<{ min: number | null; max: number | null; erro?: string }> {
+export async function estimarAlcanceAcao(
+  orgId: string,
+  definicao: unknown,
+): Promise<{ min: number | null; max: number | null; erro?: string; descontinuados?: InteresseDescontinuado[] }> {
   await acessoOrganizacao(orgId, "gestor");
   const d = DefinicaoDetalhado.safeParse(definicao);
   if (!d.success) return { min: null, max: null, erro: "Definição incompleta." };
@@ -57,6 +60,11 @@ export async function estimarAlcanceAcao(orgId: string, definicao: unknown): Pro
     const publico: Publico = { id: "", nome: "", tipo: "detalhado", definicao: d.data, meta_audience_id: null, situacao: "rascunho" };
     return await estimarAlcance(token, accountId, targetingDoPublico(publico, { paises: ["BR"], idade_min: 18, idade_max: 65, advantage: true }, []), pixelId);
   } catch (e) {
+    const descontinuados = interessesDescontinuados(mensagem(e));
+    if (descontinuados) {
+      const nomes = descontinuados.map((x) => `“${x.nome}”`).join(", ");
+      return { min: null, max: null, descontinuados, erro: `A Meta descontinuou ${nomes || "um dos interesses"}. Remova para continuar.` };
+    }
     return { min: null, max: null, erro: mensagem(e) };
   }
 }

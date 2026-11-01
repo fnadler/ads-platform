@@ -24,11 +24,7 @@ export function EditorInteresses({ orgId, slug, id, nome: nomeInicial, definicao
     key: string;
     nome: string;
   }> | null>(null);
-  const [estimativa, setEstimativa] = useState<{
-    min: number | null;
-    max: number | null;
-    erro?: string;
-  } | null>(null);
+  const [estimativa, setEstimativa] = useState<Awaited<ReturnType<typeof estimarAlcanceAcao>> | null>(null);
   const [buscando, iniciarBusca] = useTransition();
   const [estimando, iniciarEstimativa] = useTransition();
   const ultima = useRef(0);
@@ -83,38 +79,42 @@ export function EditorInteresses({ orgId, slug, id, nome: nomeInicial, definicao
               {!resultados.length && <li className="px-3 py-3 text-sm text-ink-2">A Meta não tem interesse para “{termo}”. Tente uma palavra mais ampla.</li>}
               {resultados.map((r) => (
                 <li key={r.id} className="flex items-center gap-3 px-3 py-2.5">
-                  <div className="min-w-0 flex-1">
+                  <div className={`min-w-0 flex-1 ${r.descontinuado ? "opacity-60" : ""}`}>
                     <div className="font-medium text-ink">{r.nome}</div>
                     <div className="truncate text-xs text-ink-3">
                       {r.caminho || "Interesse"} · {tamanho(r.tamanho)} no mundo
                     </div>
                   </div>
-                  <Botao
-                    type="button"
-                    variante={selecionados.has(r.id) ? "fantasma" : "secundario"}
-                    disabled={selecionados.has(r.id)}
-                    onClick={() =>
-                      atualizar({
-                        interesses: [
-                          ...d.interesses,
-                          {
-                            id: r.id,
-                            nome: r.nome,
-                            caminho: r.caminho,
-                            tamanho: r.tamanho ?? undefined,
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    {selecionados.has(r.id) ? (
-                      "Adicionado"
-                    ) : (
-                      <>
-                        <IconeMais tamanho={15} /> Adicionar
-                      </>
-                    )}
-                  </Botao>
+                  {r.descontinuado ? (
+                    <Etiqueta tom="alerta">Descontinuado pela Meta</Etiqueta>
+                  ) : (
+                    <Botao
+                      type="button"
+                      variante={selecionados.has(r.id) ? "fantasma" : "secundario"}
+                      disabled={selecionados.has(r.id)}
+                      onClick={() =>
+                        atualizar({
+                          interesses: [
+                            ...d.interesses,
+                            {
+                              id: r.id,
+                              nome: r.nome,
+                              caminho: r.caminho,
+                              tamanho: r.tamanho ?? undefined,
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      {selecionados.has(r.id) ? (
+                        "Adicionado"
+                      ) : (
+                        <>
+                          <IconeMais tamanho={15} /> Adicionar
+                        </>
+                      )}
+                    </Botao>
+                  )}
                 </li>
               ))}
             </ul>
@@ -232,7 +232,40 @@ export function EditorInteresses({ orgId, slug, id, nome: nomeInicial, definicao
             pessoas por mês que a Meta consegue alcançar com este público
             {estimando ? " · atualizando…" : ""}
           </p>
-          {estimativa?.erro && <p className="mt-2 text-xs text-err">{estimativa.erro}</p>}
+          {estimativa?.erro && !estimativa.descontinuados && <p className="mt-2 text-xs text-err">{estimativa.erro}</p>}
+          {!!estimativa?.descontinuados?.length && (
+            <Aviso tom="alerta" className="mt-3">
+              <p className="font-medium">A Meta descontinuou estes interesses:</p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {estimativa.descontinuados.map((x) => (
+                  <li key={x.id} className="flex flex-col gap-1.5">
+                    <span>
+                      <strong>{x.nome}</strong>
+                      {x.alternativa && <span className="text-ink-2"> · a Meta sugere “{x.alternativa.nome}”, que costuma ser bem mais amplo: confira antes de usar.</span>}
+                    </span>
+                    <span className="flex flex-wrap gap-2">
+                      <Botao type="button" variante="secundario" onClick={() => atualizar({ interesses: d.interesses.filter((i) => i.id !== x.id) })}>
+                        Remover
+                      </Botao>
+                      {x.alternativa && (
+                        <Botao
+                          type="button"
+                          variante="fantasma"
+                          onClick={() =>
+                            atualizar({
+                              interesses: [...d.interesses.filter((i) => i.id !== x.id && i.id !== x.alternativa!.id), { id: x.alternativa!.id, nome: x.alternativa!.nome }],
+                            })
+                          }
+                        >
+                          Trocar por “{x.alternativa.nome}”
+                        </Botao>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Aviso>
+          )}
           {pequeno && (
             <Aviso tom="alerta" className="mt-3">
               Público pequeno: a Meta otimiza pior. Use os interesses como sugestão ou amplie a idade e o local.

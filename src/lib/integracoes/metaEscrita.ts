@@ -217,17 +217,50 @@ export interface InteresseMeta {
   nome: string;
   caminho: string;
   tamanho: number | null;
+  /** A busca da Meta ainda devolve interesses que ela já descontinuou: esses não podem ser usados. */
+  descontinuado?: boolean;
 }
 
-/** Busca de interesses (imprecisa: quem confirma é a pessoa). Tamanho = limite inferior mundial da Meta. */
-export async function buscarInteresses(token: string, termo: string): Promise<InteresseMeta[]> {
+/** Busca de interesses (imprecisa: quem confirma é a pessoa), conferida pela validação da conta. */
+export async function buscarInteresses(token: string, termo: string, accountId?: string): Promise<InteresseMeta[]> {
   const r = await getMeta<{ data?: Array<{ id: string; name: string; path?: string[]; audience_size_lower_bound?: number }> }>(token, "search", {
     type: "adinterest",
     q: termo,
     locale: "pt_BR",
     limit: "8",
   });
-  return (r.data ?? []).map((i) => ({ id: i.id, nome: i.name, caminho: (i.path ?? []).slice(0, -1).join(" › "), tamanho: i.audience_size_lower_bound ?? null }));
+  const lista = (r.data ?? []).map((i) => ({ id: i.id, nome: i.name, caminho: (i.path ?? []).slice(0, -1).join(" › "), tamanho: i.audience_size_lower_bound ?? null }));
+  if (!accountId || !lista.length) return lista;
+  const invalidos = await validarInteresses(token, accountId, lista.map((i) => i.id)).catch(() => new Set<string>());
+  return lista.map((i) => (invalidos.has(i.id) ? { ...i, descontinuado: true } : i));
+}
+
+/** IDs de interesses que a Meta não aceita mais (descontinuados ou combinados). */
+export async function validarInteresses(token: string, accountId: string, ids: string[]) {
+  const r = await getMeta<{ data?: Array<{ id: string; valid?: boolean }> }>(token, `${accountId}/targetingvalidation`, { id_list: JSON.stringify(ids) });
+  return new Set((r.data ?? []).filter((x) => x.valid === false).map((x) => x.id));
+}
+
+export interface InteresseDescontinuado {
+  id: string;
+  nome: string;
+  alternativa: { id: string; nome: string } | null;
+}
+
+/** Erro 1870247 da Meta (“opções de direcionamento combinadas”): extrai os interesses e as alternativas. */
+export function interessesDescontinuados(mensagem: string): InteresseDescontinuado[] | null {
+  if (!/1870247/.test(mensagem)) return null;
+  const json = mensagem.match(/\[\{.*\}\]/)?.[0];
+  if (!json) return [];
+  try {
+    return (JSON.parse(json) as Array<Record<string, string>>).map((x) => ({
+      id: x.deprecated_interest_id,
+      nome: x.deprecated_interest_name ?? x.deprecated_interest_id,
+      alternativa: x.alternative_interest_id ? { id: x.alternative_interest_id, nome: x.alternative_interest_name ?? x.alternative_interest_id } : null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /** Estados (regiões) do país para o direcionamento por local. */
