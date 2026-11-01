@@ -21,6 +21,7 @@ import { BUCKET_UPLOADS } from "@/lib/publicacao/job";
 import { CHAMADAS, EVENTOS, validarRascunho, type ConfigPublicacao, type CriativoRascunho } from "@/lib/publicacao/modelo";
 import { rotaOrg } from "@/lib/rotas";
 import { SITUACAO_CAMPANHA } from "../situacao";
+import { CamposOrcamento } from "./CamposOrcamento";
 import { EnviarArquivos } from "./EnviarArquivos";
 
 export const metadata: Metadata = { title: "Campanha" };
@@ -63,6 +64,8 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
       <input type="hidden" name="id" value={id} />
     </>
   );
+  const orcamento =
+    r.tipo_orcamento === "total" ? `${moeda(Number(r.verba_total), org.moeda)} no total` : `${moeda(Number(r.verba_diaria), org.moeda)}/dia`;
   const linkGerenciador =
     c.meta_campaign_id && c.account_id
       ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${String(c.account_id).replace("act_", "")}&selected_campaign_ids=${c.meta_campaign_id}`
@@ -115,8 +118,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 <Formulario acao={ativarCampanha} rotulo="Ativar campanha" className="flex flex-col gap-2 border-t border-borda pt-4">
                   {hidden}
                   <p>
-                    Ativar liga os anúncios, o conjunto e a campanha. A verba de <strong>{moeda(Number(r.verba_diaria), org.moeda)}/dia</strong> passa a ser gasta a partir do
-                    início programado.
+                    Ativar liga os anúncios, o conjunto e a campanha. O orçamento de <strong>{orcamento}</strong> passa a ser gasto a partir do início programado.
                   </p>
                   <Campo rotulo="Digite ATIVAR para confirmar" name="confirmacao" autoComplete="off" required />
                 </Formulario>
@@ -131,15 +133,13 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
             <Formulario acao={salvarRascunho} rotulo="Salvar" className="grid gap-3 sm:grid-cols-2">
               {hidden}
               <Campo rotulo="Nome da campanha" name="nome" defaultValue={c.nome} required className="sm:col-span-2" />
-              <Campo
-                rotulo="Verba diária (R$)"
-                name="verba_diaria"
-                type="number"
-                min="1"
-                step="1"
-                defaultValue={Number(r.verba_diaria) || ""}
-                required
-                ajuda={cfg ? `Teto da organização: ${moeda(cfg.teto_verba_diaria, org.moeda)}/dia.` : undefined}
+              <CamposOrcamento
+                tipo={r.tipo_orcamento === "total" ? "total" : "diario"}
+                diaria={Number(r.verba_diaria) || 0}
+                total={Number(r.verba_total) || 0}
+                teto={cfg ? moeda(cfg.teto_verba_diaria, org.moeda) : null}
+                inicio={String(r.inicio ?? "")}
+                fim={String(r.fim ?? "")}
               />
               <Selecao rotulo="Otimizar para" name="evento" defaultValue={String(r.evento ?? "COMPLETE_REGISTRATION")}>
                 {Object.entries(EVENTOS).map(([k, v]) => (
@@ -149,7 +149,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 ))}
               </Selecao>
               <Campo rotulo="Início" name="inicio" type="datetime-local" defaultValue={String(r.inicio ?? "")} required ajuda={`Horário de ${org.fuso}.`} />
-              <Campo rotulo="Fim (opcional)" name="fim" type="datetime-local" defaultValue={String(r.fim ?? "")} ajuda="Em branco: roda até você pausar." />
+              <Campo rotulo="Fim" name="fim" type="datetime-local" defaultValue={String(r.fim ?? "")} ajuda="Obrigatório com orçamento total. Com orçamento diário, em branco roda até você pausar." />
               <Campo rotulo="Página de destino" name="url_destino" type="url" defaultValue={String(r.url_destino ?? "")} placeholder="https://" required className="sm:col-span-2" ajuda="Sem utm_: o sistema acrescenta os Parâmetros de URL sozinho." />
               <Campo rotulo="Idade mínima" name="idade_min" type="number" min="18" max="65" defaultValue={Number(r.idade_min ?? 18)} />
               <Campo rotulo="Idade máxima" name="idade_max" type="number" min="18" max="65" defaultValue={Number(r.idade_max ?? 65)} />
@@ -164,8 +164,8 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
           ) : (
             <dl className="grid gap-2 text-sm sm:grid-cols-3">
               <div>
-                <dt className="text-suave">Verba diária</dt>
-                <dd>{moeda(Number(r.verba_diaria), org.moeda)}</dd>
+                <dt className="text-suave">Orçamento</dt>
+                <dd>{orcamento}</dd>
               </div>
               <div>
                 <dt className="text-suave">Otimizar para</dt>
@@ -276,7 +276,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 </Aviso>
               ) : (
                 <Aviso tom="ok">
-                  Pronto para criar: {lista.length} anúncio(s) em “{c.nome}”, {moeda(Number(r.verba_diaria), org.moeda)}/dia, a partir de {String(r.inicio).replace("T", " ")}. Rastreio
+                  Pronto para criar: {lista.length} anúncio(s) em “{c.nome}”, {orcamento}, a partir de {String(r.inicio).replace("T", " ")}. Rastreio
                   automático (Parâmetros de URL e conjunto de dados {cfg?.pixel_id}).
                 </Aviso>
               )}

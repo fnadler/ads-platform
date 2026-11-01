@@ -24,8 +24,14 @@ export type Chamada = keyof typeof CHAMADAS;
 
 export const LIMITE_CRIATIVOS = 10;
 
+export const TIPOS_ORCAMENTO = { diario: "Diário", total: "Total do período" } as const;
+
 export const Rascunho = z.object({
-  verba_diaria: z.coerce.number().positive("Informe a verba diária."),
+  // Diário: a Meta gasta em média a verba por dia (pode variar dia a dia). Total: orçamento vitalício — a Meta
+  // distribui o valor até a data de fim e não passa dele (exige fim).
+  tipo_orcamento: z.enum(["diario", "total"]).default("diario"),
+  verba_diaria: z.coerce.number().nonnegative().default(0),
+  verba_total: z.coerce.number().nonnegative().default(0),
   inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Informe o início."),
   fim: z
     .string()
@@ -77,6 +83,19 @@ export function horarioComFuso(local: string, fuso: string) {
 const SEM_CENTAVOS = new Set(["JPY", "KRW", "CLP", "COP", "HUF", "ISK", "PYG", "TWD", "VND", "IDR"]);
 export const menorUnidade = (valor: number, moeda: string) => Math.round(SEM_CENTAVOS.has(moeda.toUpperCase()) ? valor : valor * 100);
 
+/** Dias do período (fração conta) — só com data de fim. */
+export function diasDoPeriodo(r: Pick<Rascunho, "inicio" | "fim">, fuso: string) {
+  if (!r.fim) return null;
+  return (Date.parse(horarioComFuso(r.fim, fuso)) - Date.parse(horarioComFuso(r.inicio, fuso))) / 86_400_000;
+}
+
+/** Gasto médio por dia: a verba diária, ou o total dividido pelos dias do período. */
+export function mediaDiaria(r: Pick<Rascunho, "tipo_orcamento" | "verba_diaria" | "verba_total" | "inicio" | "fim">, fuso: string) {
+  if (r.tipo_orcamento === "diario") return r.verba_diaria;
+  const dias = diasDoPeriodo(r, fuso);
+  return dias && dias > 0 ? r.verba_total / dias : null;
+}
+
 /** O que impede de enviar à Meta (o que a própria Meta recusar aparece depois, em português). */
 export function validarRascunho(
   bruto: unknown,
@@ -92,13 +111,25 @@ export function validarRascunho(
 
   if (!config?.account_id || !config.page_id || !config.pixel_id)
     problemas.push({ campo: "configuracao", texto: "Complete a configuração de publicação (conta, Página e conjunto de dados) em Configurações." });
-  if (r && config && r.verba_diaria > config.teto_verba_diaria)
-    problemas.push({ campo: "verba_diaria", texto: `A verba diária passa do teto da organização (${config.teto_verba_diaria.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}).` });
   if (r) {
+    const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const inicio = Date.parse(horarioComFuso(r.inicio, fuso));
+    const fim = r.fim ? Date.parse(horarioComFuso(r.fim, fuso)) : null;
     if (inicio < agora.getTime() - 5 * 60_000) problemas.push({ campo: "inicio", texto: "O início precisa ser no futuro." });
-    if (r.fim && Date.parse(horarioComFuso(r.fim, fuso)) <= inicio + 24 * 3600_000)
-      problemas.push({ campo: "fim", texto: "O fim precisa ser pelo menos 24 horas depois do início." });
+    if (fim !== null && fim <= inicio + 24 * 3600_000) problemas.push({ campo: "fim", texto: "O fim precisa ser pelo menos 24 horas depois do início." });
+    if (r.tipo_orcamento === "diario") {
+      if (!r.verba_diaria) problemas.push({ campo: "verba_diaria", texto: "Informe a verba diária." });
+      else if (config && r.verba_diaria > config.teto_verba_diaria)
+        problemas.push({ campo: "verba_diaria", texto: `A verba diária passa do teto da organização (${brl(config.teto_verba_diaria)}).` });
+    } else {
+      if (!r.verba_total) problemas.push({ campo: "verba_total", texto: "Informe o orçamento total." });
+      if (fim === null) problemas.push({ campo: "fim", texto: "Com orçamento total, informe a data de fim: a Meta distribui o valor até ela." });
+      else if (r.verba_total && config) {
+        const media = mediaDiaria(r, fuso)!;
+        if (media > config.teto_verba_diaria)
+          problemas.push({ campo: "verba_total", texto: `A média por dia (${brl(media)}) passa do teto da organização (${brl(config.teto_verba_diaria)}). Aumente o período ou reduza o total.` });
+      }
+    }
     if (r.idade_min > r.idade_max) problemas.push({ campo: "idade_min", texto: "A idade mínima é maior que a máxima." });
     if (!r.url_destino.startsWith("https://")) problemas.push({ campo: "url_destino", texto: "A página de destino precisa começar com https://." });
     if (/[?&]utm_/.test(r.url_destino))
@@ -138,7 +169,7 @@ export function payloadConjunto(nome: string, campaignId: string, r: Rascunho, c
     name: nomeConjunto(nome, r),
     campaign_id: campaignId,
     status: "PAUSED",
-    daily_budget: menorUnidade(r.verba_diaria, moeda),
+    ...(r.tipo_orcamento === "total" ? { lifetime_budget: menorUnidade(r.verba_total, moeda) } : { daily_budget: menorUnidade(r.verba_diaria, moeda) }),
     billing_event: "IMPRESSIONS",
     optimization_goal: "OFFSITE_CONVERSIONS",
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",

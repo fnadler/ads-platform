@@ -79,6 +79,31 @@ describe("payloads", () => {
   });
 });
 
+describe("orçamento total", () => {
+  const total = { ...bruto, tipo_orcamento: "total", verba_diaria: 0, verba_total: 750, fim: "2026-11-18T00:00" };
+
+  it("vai como lifetime_budget, com fim, e a média diária respeita o teto", () => {
+    const v = validarRascunho(total, [criativo], config, "America/Sao_Paulo", agora);
+    expect(v.problemas).toEqual([]);
+    const c = payloadConjunto("GN", "cmp1", v.rascunho!, config, "BRL", "America/Sao_Paulo");
+    expect(c).toMatchObject({ lifetime_budget: 75000, end_time: "2026-11-18T00:00:00-03:00" });
+    expect(c).not.toHaveProperty("daily_budget");
+  });
+
+  it("exige fim e acusa média acima do teto", () => {
+    const semFim = validarRascunho({ ...total, fim: "" }, [criativo], config, "America/Sao_Paulo", agora);
+    expect(semFim.problemas.map((p) => p.campo)).toContain("fim");
+    const curto = validarRascunho({ ...total, fim: "2026-11-05T00:00" }, [criativo], config, "America/Sao_Paulo", agora); // R$ 375/dia
+    expect(curto.problemas.map((p) => p.texto).join(" ")).toMatch(/média por dia/);
+  });
+
+  it("diário sem verba é problema; diário não manda lifetime_budget", () => {
+    expect(validarRascunho({ ...bruto, verba_diaria: 0 }, [criativo], config, "America/Sao_Paulo", agora).problemas.map((p) => p.campo)).toContain("verba_diaria");
+    const v = validarRascunho(bruto, [criativo], config, "America/Sao_Paulo", agora).rascunho!;
+    expect(payloadConjunto("GN", "c", v, config, "BRL", "America/Sao_Paulo")).not.toHaveProperty("lifetime_budget");
+  });
+});
+
 describe("conversões", () => {
   it("horário no fuso e moeda na menor unidade", () => {
     expect(horarioComFuso("2026-11-03T09:30", "America/Sao_Paulo")).toBe("2026-11-03T09:30:00-03:00");

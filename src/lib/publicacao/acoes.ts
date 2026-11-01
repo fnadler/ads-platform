@@ -134,7 +134,9 @@ export async function criarRascunho(_: Resultado, dados: FormData): Promise<Resu
         nome,
         criado_por: usuario.id,
         rascunho: {
+          tipo_orcamento: "diario",
           verba_diaria: Math.min(50, Number(config?.teto_verba_diaria ?? 50)),
+          verba_total: 0,
           inicio: amanha(org?.fuso ?? "America/Sao_Paulo"),
           evento: anterior.evento ?? "COMPLETE_REGISTRATION",
           paises: ["BR"],
@@ -160,8 +162,15 @@ export async function salvarRascunho(_: Resultado, dados: FormData): Promise<Res
   try {
     const { supabase } = await acessoOrganizacao(orgId, "gestor");
     const nome = String(dados.get("nome") ?? "").trim();
+    const numero = (k: string) => Number(String(dados.get(k) ?? "").replace(",", ".")) || 0;
+    const anterior = await supabase.from("campanhas_assistente").select("rascunho").eq("id", id).eq("organizacao_id", orgId).maybeSingle();
+    const antes = (anterior.data?.rascunho ?? {}) as Record<string, unknown>;
+    const tipo = dados.get("tipo_orcamento") === "total" ? "total" : "diario";
     const rascunho = {
-      verba_diaria: Number(String(dados.get("verba_diaria") ?? "").replace(",", ".")),
+      tipo_orcamento: tipo,
+      // O campo do outro tipo não vem no formulário: guarda o valor anterior para não perder ao alternar.
+      verba_diaria: tipo === "diario" ? numero("verba_diaria") : Number(antes.verba_diaria) || 0,
+      verba_total: tipo === "total" ? numero("verba_total") : Number(antes.verba_total) || 0,
       inicio: String(dados.get("inicio") ?? ""),
       fim: String(dados.get("fim") ?? ""),
       evento: String(dados.get("evento") ?? "COMPLETE_REGISTRATION"),
