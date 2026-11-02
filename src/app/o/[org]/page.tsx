@@ -2,6 +2,8 @@ import { IconeSeta } from "@/components/Icones";
 import { BotaoLink, Etiqueta, Titulo } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
+import { lerFatos } from "@/lib/onboarding/fatos";
+import { configuracaoEmAndamento, progresso, telas, telaInicial } from "@/lib/onboarding/modelo";
 import { avaliarParametros } from "@/lib/rastreio/regras";
 import { rotaOrg } from "@/lib/rotas";
 import { PLATAFORMAS_VENDA, TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
@@ -10,10 +12,28 @@ import { PLATAFORMAS_VENDA, TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/ca
 export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]">) {
   const { org: slug } = await params;
   const { org, supabase } = await exigirOrganizacao(slug);
-  const [{ data: conexoes }, { data: contas }, { data: sinc }, { data: anuncios }, { data: teste }, { count: leads }, { data: ultimoLead }, { count: vendas }, { count: vendasComAnuncio }] = await Promise.all([
+  const [
+    { data: conexoes },
+    { data: contas },
+    { data: sinc },
+    { data: anuncios },
+    { data: teste },
+    { count: leads },
+    { data: ultimoLead },
+    { count: vendas },
+    { count: vendasComAnuncio },
+  ] = await Promise.all([
     supabase.from("conexoes").select("tipo, status").eq("organizacao_id", org.id),
     supabase.from("contas_anuncio").select("account_id").eq("organizacao_id", org.id).eq("ativa", true),
-    supabase.from("sincronizacoes").select("status, terminado_em").eq("organizacao_id", org.id).eq("tipo", "meta").eq("status", "ok").order("terminado_em", { ascending: false }).limit(1).maybeSingle(),
+    supabase
+      .from("sincronizacoes")
+      .select("status, terminado_em")
+      .eq("organizacao_id", org.id)
+      .eq("tipo", "meta")
+      .eq("status", "ok")
+      .order("terminado_em", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     supabase.from("meta_anuncios").select("url_tags, status").eq("organizacao_id", org.id).in("status", ["ACTIVE", "PENDING_REVIEW", "PREAPPROVED", "IN_PROCESS"]),
     supabase.from("verificacoes_rastreio").select("status, verificado_em").eq("organizacao_id", org.id).order("criado_em", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).is("codigo_teste", null),
@@ -21,6 +41,9 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
     supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento"),
     supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento").not("utm_ad_id", "is", null),
   ]);
+  const fatos = await lerFatos(supabase, org.id, org.onboarding);
+  const continuar = configuracaoEmAndamento(fatos, (leads ?? 0) > 0 || (vendas ?? 0) > 0);
+  const retomar = telas(fatos).find((t) => t.id === telaInicial(fatos));
   const conexao = (tipo: string) => conexoes?.find((c) => c.tipo === tipo);
   const plataformas = TIPOS_PLATAFORMA.flatMap((t) => (conexao(t) ? [{ rotulo: PLATAFORMAS_VENDA[t].rotulo, ativa: conexao(t)!.status === "ativa" }] : []));
   const fonteOk = conexao("webhook")?.status === "ativa" || conexao("stripe")?.status === "ativa" || plataformas.some((p) => p.ativa);
@@ -29,19 +52,61 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
   const r = (resto: string) => rotaOrg(slug, resto);
 
   const passos: Array<{ ok: boolean; titulo: string; detalhe: string; href: string }> = [
-    { ok: conexao("meta")?.status === "ativa" && !!contas?.length, titulo: "Conectar a Meta e ligar a conta de anúncios", detalhe: contas?.length ? `${contas.length} conta(s) ligada(s)` : "Token do usuário do sistema", href: r("/configuracoes") },
-    { ok: fonteOk, titulo: "Conectar a fonte de venda", detalhe: [conexao("webhook") && "webhook", conexao("stripe") && `Stripe (${conexao("stripe")!.status})`, ...plataformas.map((p) => p.rotulo)].filter(Boolean).join(" · ") || "Hotmart, Kiwify, Stripe, webhook ou CSV", href: r("/configuracoes") },
+    {
+      ok: conexao("meta")?.status === "ativa" && !!contas?.length,
+      titulo: "Conectar a Meta e ligar a conta de anúncios",
+      detalhe: contas?.length ? `${contas.length} conta(s) ligada(s)` : "Token do usuário do sistema",
+      href: r("/configuracoes"),
+    },
+    {
+      ok: fonteOk,
+      titulo: "Conectar a fonte de venda",
+      detalhe:
+        [conexao("webhook") && "webhook", conexao("stripe") && `Stripe (${conexao("stripe")!.status})`, ...plataformas.map((p) => p.rotulo)].filter(Boolean).join(" · ") ||
+        "Hotmart, Kiwify, Stripe, webhook ou CSV",
+      href: r("/configuracoes"),
+    },
     {
       ok: !!anuncios?.length && semRastreio === 0,
       titulo: "Parâmetros de URL em todos os anúncios",
       detalhe: !anuncios?.length ? "Nenhum anúncio ativo ou em análise lido ainda" : semRastreio ? `${semRastreio} anúncio(s) sem rastreio` : `${anuncios.length} anúncio(s) ok`,
       href: r("/rastreio"),
     },
-    ...(direta ? [] : [{ ok: teste?.status === "ok", titulo: "Teste de ponta a ponta", detalhe: teste ? (teste.status === "ok" ? `OK em ${dataHora(teste.verificado_em, org.fuso)}` : teste.status === "problema" ? "Com problema" : "Aguardando o lead de teste") : "Ainda não feito", href: r("/rastreio") }]),
-    { ok: !!sinc, titulo: "Primeira sincronização da Meta", detalhe: sinc ? `Última: ${dataHora(sinc.terminado_em, org.fuso)}` : "Na fila ou não iniciada", href: r("/sincronizacoes") },
+    ...(direta
+      ? []
+      : [
+          {
+            ok: teste?.status === "ok",
+            titulo: "Teste de ponta a ponta",
+            detalhe: teste
+              ? teste.status === "ok"
+                ? `OK em ${dataHora(teste.verificado_em, org.fuso)}`
+                : teste.status === "problema"
+                  ? "Com problema"
+                  : "Aguardando o lead de teste"
+              : "Ainda não feito",
+            href: r("/rastreio"),
+          },
+        ]),
+    {
+      ok: !!sinc,
+      titulo: "Primeira sincronização da Meta",
+      detalhe: sinc ? `Última: ${dataHora(sinc.terminado_em, org.fuso)}` : "Na fila ou não iniciada",
+      href: r("/sincronizacoes"),
+    },
     direta
-      ? { ok: (vendasComAnuncio ?? 0) > 0, titulo: "Vendas chegando com o anúncio", detalhe: `${vendas ?? 0} venda(s), ${vendasComAnuncio ?? 0} com anúncio de origem`, href: r("/vendas") }
-      : { ok: (leads ?? 0) > 0, titulo: "Leads chegando", detalhe: `${leads ?? 0} lead(s), ${vendas ?? 0} venda(s)${ultimoLead ? ` · último ${dataHora(ultimoLead.recebido_em, org.fuso)}` : ""}`, href: r("/vendas") },
+      ? {
+          ok: (vendasComAnuncio ?? 0) > 0,
+          titulo: "Vendas chegando com o anúncio",
+          detalhe: `${vendas ?? 0} venda(s), ${vendasComAnuncio ?? 0} com anúncio de origem`,
+          href: r("/vendas"),
+        }
+      : {
+          ok: (leads ?? 0) > 0,
+          titulo: "Leads chegando",
+          detalhe: `${leads ?? 0} lead(s), ${vendas ?? 0} venda(s)${ultimoLead ? ` · último ${dataHora(ultimoLead.recebido_em, org.fuso)}` : ""}`,
+          href: r("/vendas"),
+        },
   ];
   const prontos = passos.filter((p) => p.ok).length;
   const proximo = passos.find((p) => !p.ok);
@@ -78,6 +143,19 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
       >
         Pronto para a campanha?
       </Titulo>
+      {continuar && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-accent bg-accent-soft p-5">
+          <div className="min-w-0">
+            <span className="sobrancelha">Configuração em andamento · {progresso(fatos)}%</span>
+            <p className="mt-1 text-lg font-semibold text-ink">{progresso(fatos) ? "Continue de onde parou" : "Vamos ligar seus anúncios às suas vendas"}</p>
+            <p className="text-sm text-ink-2">{retomar ? `Próximo passo: ${retomar.titulo}` : "Cada passo é conferido pelo sistema, e você pode parar e voltar quando quiser."}</p>
+          </div>
+          <BotaoLink href={r("/configurar")} variante="peso" className="max-sm:w-full">
+            {progresso(fatos) ? "Continuar" : "Começar"}
+            <IconeSeta tamanho={16} />
+          </BotaoLink>
+        </div>
+      )}
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
         <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
           {passos.map((p, i) => {

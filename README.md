@@ -73,6 +73,12 @@ Se a conta não existir, o comando a cria e mostra uma senha provisória uma vez
 
 ## Uso
 
+### Assistente de configuração
+
+Em `/o/<organização>/configurar`, o assistente leva a pessoa por seis etapas: negócio, Meta, página de destino, fonte de venda, teste completo e resumo. Uma organização nova cai direto nele, e a tela Início mostra onde retomar.
+
+O andamento não é marcado à mão: vem do que o sistema confere (`src/lib/onboarding/modelo.ts`). Um token removido, por exemplo, volta a aparecer como pendente. As respostas ficam em `organizacoes.onboarding`.
+
 ### Cadastrar uma organização (cliente)
 
 1. Entre como administrador e abra **Administração** (link na página inicial).

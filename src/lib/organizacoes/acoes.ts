@@ -28,7 +28,7 @@ export async function criarOrganizacao(_: Resultado, dados: FormData): Promise<R
   const supabase = await criarClienteServidor();
   const { error } = await supabase.rpc("criar_organizacao", { p_nome: v.data.nome, p_slug: v.data.slug });
   if (error) return { erro: error.code === "23505" ? "Já existe uma organização com esse endereço." : error.message };
-  redirect(rotaOrg(v.data.slug, "/configuracoes/membros"));
+  redirect(rotaOrg(v.data.slug, "/configurar"));
 }
 
 const NovoConvite = z.object({
