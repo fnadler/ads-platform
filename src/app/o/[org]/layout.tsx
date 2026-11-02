@@ -55,8 +55,8 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
         <Navegacao itens={itens} />
         <div className="flex flex-col gap-2 border-t border-chrome-2 pt-3.5">
           <span className="truncate px-1 text-xs text-chrome-ink-2">{usuario.email}</span>
-          <div className="flex gap-1.5">
-            <AlternarTema comRotulo className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[14px] bg-chrome-2 text-sm font-medium text-chrome-ink [&_svg]:size-4" />
+          <div className="flex items-center gap-1.5">
+            <AlternarTema />
             <form action="/sair" method="post" className="flex flex-1">
               <button className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[14px] text-sm font-medium text-chrome-ink hover:bg-chrome-2">
                 <IconeSair tamanho={16} />
@@ -72,7 +72,7 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
           <div className="flex items-center gap-2.5 px-3 py-2.5">
             <img src="/marca/adverdad-mark-dark.png" alt="Adverdad" className="h-[26px] w-auto flex-none" />
             {cartaoOrg(true)}
-            <AlternarTema className="grid size-11 flex-none place-items-center rounded-[14px] text-chrome-ink hover:bg-chrome-2" />
+            <AlternarTema />
             <form action="/sair" method="post">
               <button className="min-h-11 px-2 font-medium text-chrome-ink">Sair</button>
             </form>

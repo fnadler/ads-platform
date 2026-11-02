@@ -11,7 +11,7 @@ export function BarraSimples() {
           <img src="/marca/adverdad-logo-dark.png" alt="Adverdad" className="h-7 w-auto" />
         </Link>
         <div className="flex items-center gap-1">
-          <AlternarTema className="grid size-11 place-items-center rounded-[14px] hover:bg-chrome-2" />
+          <AlternarTema />
           <form action="/sair" method="post">
             <button className="min-h-11 rounded-[14px] px-3 font-medium hover:bg-chrome-2">Sair</button>
           </form>
