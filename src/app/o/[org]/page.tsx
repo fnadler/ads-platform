@@ -170,7 +170,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
                   </div>
                   <p className="mt-1 text-sm text-ink-2">{p.detalhe}</p>
                 </div>
-                <BotaoLink href={p.href} variante={atual ? "primario" : "secundario"} className="max-sm:w-full">
+                <BotaoLink href={p.href} variante={atual ? "primario" : "secundario"} className="w-full sm:w-[200px]">
                   {acao(p.href)}
                   <IconeSeta tamanho={16} />
                 </BotaoLink>
@@ -185,10 +185,15 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             Se um anúncio roda sem parâmetros ou a venda não chega com a origem, aquele dinheiro fica sem resposta para sempre. Feche os passos antes de ativar a campanha.
           </p>
           {proximo ? (
-            <BotaoLink href={proximo.href} variante="peso" className="mt-2 justify-start">
-              Próximo: {proximo.titulo}
-              <IconeSeta tamanho={16} />
-            </BotaoLink>
+            <div className="mt-2 flex flex-col gap-3">
+              <p className="text-sm text-chrome-ink-2">
+                Próximo: <strong className="font-semibold text-chrome-ink">{proximo.titulo}</strong>
+              </p>
+              <BotaoLink href={proximo.href} variante="peso">
+                Ir para o próximo passo
+                <IconeSeta tamanho={16} />
+              </BotaoLink>
+            </div>
           ) : (
             <BotaoLink href={r("/desempenho")} variante="peso" className="mt-2 justify-start">
               Ver Desempenho
