@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Membros" };
 
 const DESCRICAO_PAPEL: Record<Papel, string> = {
   dono: "gerencia pessoas e conexões",
-  gestor: "configura rastreio, sincroniza e importa vendas",
+  gestor: "configura rastreio e vendas",
   leitura: "só vê",
 };
 
@@ -47,27 +47,35 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
                   </td>
                   <td>
                     {ehDono ? (
-                      <Formulario acao={alterarPapel} rotulo="Salvar" variante="secundario" className="flex items-center gap-2">
-                        <input type="hidden" name="organizacao_id" value={org.id} />
-                        <input type="hidden" name="usuario_id" value={m.usuario_id} />
-                        <select name="papel" defaultValue={m.papel} className="min-h-11 rounded-md border border-line-strong bg-surface px-3">
-                          {(["dono", "gestor", "leitura"] as const).map((p) => (
-                            <option key={p} value={p}>
-                              {ROTULO_PAPEL[p]}
-                            </option>
-                          ))}
-                        </select>
-                      </Formulario>
+                      <select
+                        name="papel"
+                        form={`papel-${m.usuario_id}`}
+                        aria-label={`Papel de ${m.email}`}
+                        defaultValue={m.papel}
+                        className="min-h-11 w-full min-w-[320px] rounded-md border border-line-strong bg-surface px-3"
+                      >
+                        {(["dono", "gestor", "leitura"] as const).map((p) => (
+                          <option key={p} value={p}>
+                            {ROTULO_PAPEL[p]}: {DESCRICAO_PAPEL[p]}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
                       ROTULO_PAPEL[m.papel]
                     )}
                   </td>
                   {ehDono && (
-                    <td className="text-right">
-                      <Formulario acao={removerMembro} rotulo="Remover" variante="perigo" confirmar={`Remover ${m.email} da organização?`}>
-                        <input type="hidden" name="organizacao_id" value={org.id} />
-                        <input type="hidden" name="usuario_id" value={m.usuario_id} />
-                      </Formulario>
+                    <td>
+                      <div className="flex items-start justify-end gap-2">
+                        <Formulario id={`papel-${m.usuario_id}`} acao={alterarPapel} rotulo="Salvar" variante="secundario">
+                          <input type="hidden" name="organizacao_id" value={org.id} />
+                          <input type="hidden" name="usuario_id" value={m.usuario_id} />
+                        </Formulario>
+                        <Formulario acao={removerMembro} rotulo="Remover" variante="perigo" confirmar={`Remover ${m.email} da organização?`}>
+                          <input type="hidden" name="organizacao_id" value={org.id} />
+                          <input type="hidden" name="usuario_id" value={m.usuario_id} />
+                        </Formulario>
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -80,7 +88,7 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
           <Cartao titulo="Convidar" descricao="O sistema gera um link (vale 7 dias) para você mandar à pessoa. Ela cria a senha ao abrir.">
             <Formulario acao={convidar} rotulo="Gerar convite" className="flex flex-col gap-4">
               <input type="hidden" name="organizacao_id" value={org.id} />
-              <div className="grid items-start gap-4 sm:grid-cols-[1fr_200px]">
+              <div className="grid items-start gap-4 lg:grid-cols-2">
                 <Campo rotulo="E-mail" name="email" type="email" required />
                 <Selecao rotulo="Papel" name="papel" defaultValue="gestor">
                   {(["dono", "gestor", "leitura"] as const).map((p) => (

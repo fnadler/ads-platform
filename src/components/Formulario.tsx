@@ -15,6 +15,7 @@ export function Formulario({
   variante = "primario",
   className,
   confirmar,
+  id,
 }: {
   acao: (anterior: Resultado, dados: FormData) => Promise<Resultado>;
   children?: ReactNode;
@@ -22,10 +23,13 @@ export function Formulario({
   variante?: "primario" | "secundario" | "perigo" | "peso" | "fantasma";
   className?: string;
   confirmar?: string;
+  /** Para campos que ficam fora do formulário (atributo form), como numa linha de tabela. */
+  id?: string;
 }) {
   const [estado, enviar, enviando] = useActionState(acao, null);
   return (
     <form
+      id={id}
       action={enviar}
       className={className ?? "flex flex-col gap-3"}
       onSubmit={(e) => {
