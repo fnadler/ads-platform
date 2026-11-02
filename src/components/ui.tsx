@@ -156,7 +156,7 @@ export function Indicador({ rotulo, valor, detalhe, destaque }: { rotulo: ReactN
   return (
     <div className={juntar("flex min-w-0 flex-col gap-1 p-4 sm:p-5", destaque ? "bg-accent-soft" : "bg-surface")}>
       <span className="text-sm text-ink-2">{rotulo}</span>
-      <span className="num-display truncate text-2xl text-ink sm:text-[28px] sm:leading-9">{valor}</span>
+      <span className="num-display text-2xl text-ink sm:text-[28px] sm:leading-9">{valor}</span>
       {detalhe && <span className="text-xs text-ink-3">{detalhe}</span>}
     </div>
   );

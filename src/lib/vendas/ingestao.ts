@@ -102,6 +102,18 @@ async function registrarEvento(ctx: Contexto, chave: string, e: Evento) {
   if (error) console.error("[ingestão] eventos_recebidos", error.message);
 }
 
+/** Chave de idempotência do evento (a mesma no sucesso e na falha: reenviar limpa o erro). */
+const chaveDe = (e: Evento) => (e.tipo === "lead" ? `lead:${e.id_externo}` : e.tipo === "teste_iniciado" ? `teste:${e.id_externo}` : `${e.tipo}:${e.id_externo}`);
+
+/** Evento recusado fica registrado com o erro, para aparecer em Leads e vendas (e não só no log de quem enviou). */
+async function registrarFalha(ctx: Contexto, e: Evento, erro: string) {
+  const { error } = await ctx.admin.from("eventos_recebidos").upsert(
+    { organizacao_id: ctx.organizacaoId, conexao_id: ctx.conexaoId, origem: ctx.origem, chave_idempotencia: chaveDe(e), tipo: e.tipo, payload: payloadSeguro(e), processado_em: null, erro },
+    { onConflict: "organizacao_id,origem,chave_idempotencia" },
+  );
+  if (error) console.error("[ingestão] eventos_recebidos", error.message);
+}
+
 async function upsertLead(ctx: Contexto, campos: Record<string, unknown> & { id_externo: string; criado_em?: string }) {
   // Lead que ainda não existe (ex.: a venda chegou antes do cadastro) nasce com a data do evento; quando o
   // cadastro chegar, ele completa a atribuição e a data.
@@ -121,6 +133,15 @@ async function upsertLead(ctx: Contexto, campos: Record<string, unknown> & { id_
 }
 
 export async function processarEvento(ctx: Contexto, e: Evento): Promise<void> {
+  try {
+    await aplicarEvento(ctx, e);
+  } catch (err) {
+    await registrarFalha(ctx, e, (err as Error).message);
+    throw err;
+  }
+}
+
+async function aplicarEvento(ctx: Contexto, e: Evento): Promise<void> {
   const agora = new Date().toISOString();
   const em = (v?: string) => (v ? new Date(v).toISOString() : agora);
 
@@ -158,7 +179,7 @@ export async function processarEvento(ctx: Contexto, e: Evento): Promise<void> {
         .eq("organizacao_id", ctx.organizacaoId)
         .eq("id_externo", e.id_externo)
         .is("primeiro_pagamento_em", null);
-    await registrarEvento(ctx, `lead:${e.id_externo}`, e);
+    await registrarEvento(ctx, chaveDe(e), e);
     return;
   }
 
@@ -166,7 +187,7 @@ export async function processarEvento(ctx: Contexto, e: Evento): Promise<void> {
     const { data: lead } = await ctx.admin.from("leads").select("id, teste_iniciado_em").eq("organizacao_id", ctx.organizacaoId).eq("id_externo", e.id_externo).maybeSingle();
     if (lead?.teste_iniciado_em) return; // vale o primeiro
     await upsertLead(ctx, { id_externo: e.id_externo, teste_iniciado_em: em(e.ocorrido_em), ...(lead ? {} : { criado_em: em(e.ocorrido_em) }) });
-    await registrarEvento(ctx, `teste:${e.id_externo}`, e);
+    await registrarEvento(ctx, chaveDe(e), e);
     return;
   }
 
@@ -200,7 +221,7 @@ export async function processarEvento(ctx: Contexto, e: Evento): Promise<void> {
       .eq("id_externo", e.lead_id_externo)
       .is("primeiro_pagamento_em", null);
   }
-  await registrarEvento(ctx, `${e.tipo}:${e.id_externo}`, e);
+  await registrarEvento(ctx, chaveDe(e), e);
 }
 
 /** Valida e processa uma lista de eventos crus; devolve quantos entraram e os erros por posição. */

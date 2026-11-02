@@ -192,7 +192,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         <Vazio titulo="Sem dados no período">Confira em Sincronizações se a Meta já foi carregada, ou escolha um período maior.</Vazio>
       ) : (
         <div className="grid gap-5">
-          <Indicadores className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
+          <Indicadores className="grid-cols-2 xl:grid-cols-4">
             <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
             <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
             <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
-import { Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
+import { Aviso, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { importarCsv } from "@/lib/vendas/acoes";
@@ -30,6 +30,17 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
     supabase.from("vendas_atribuidas").select("id_externo, tipo, valor, moeda, ocorrida_em, ad_id, lead_id_externo, origem").eq("organizacao_id", org.id).order("ocorrida_em", { ascending: false }).limit(50),
     supabase.from("meta_anuncios").select("ad_id, nome").eq("organizacao_id", org.id),
   ]);
+  // Eventos recusados na última semana (sem isso, uma falha de envio só apareceria no log de quem enviou).
+  const { data: recusados, count: totalRecusados } = temPapel(papel, "gestor")
+    ? await supabase
+        .from("eventos_recebidos")
+        .select("erro, recebido_em", { count: "exact" })
+        .eq("organizacao_id", org.id)
+        .not("erro", "is", null)
+        .gte("recebido_em", hojeMenos(7, org.fuso))
+        .order("recebido_em", { ascending: false })
+        .limit(1)
+    : { data: null, count: 0 };
   const nomeAnuncio = new Map((nomes ?? []).map((n) => [n.ad_id, n.nome]));
   const c = cobertura ?? { leads: 0, leads_com_anuncio: 0, vendas: 0, vendas_com_anuncio: 0, receita: 0, receita_com_anuncio: 0 };
   const coberturaReceita = razao(Number(c.receita_com_anuncio), Number(c.receita));
@@ -40,6 +51,12 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
         O que chegou à fonte de venda
       </Titulo>
       <div className="grid gap-6">
+        {!!totalRecusados && (
+          <Aviso tom="erro">
+            <strong>{inteiro(totalRecusados)} evento(s) recusado(s) nos últimos 7 dias.</strong> Eles não entraram nos números abaixo. Último erro ({dataHora(recusados?.[0]?.recebido_em, org.fuso)}):{" "}
+            <span className="font-mono text-xs">{recusados?.[0]?.erro}</span>
+          </Aviso>
+        )}
         <Cartao titulo="Cobertura de atribuição (30 dias)" descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
           <Indicadores className="sm:grid-cols-3">
             <Indicador
