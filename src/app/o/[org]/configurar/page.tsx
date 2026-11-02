@@ -7,7 +7,7 @@ import { Aviso, BotaoLink, Campo, Cartao, Etiqueta, Selecao, Tabela, Titulo, typ
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { alterarConta } from "@/lib/conexoes/acoes";
 import { lerSegredo, type SegredoMeta } from "@/lib/conexoes/segredos";
-import { dataHora } from "@/lib/formato";
+import { dataHora, inteiro } from "@/lib/formato";
 import { lerPrerequisitos, type Prerequisitos } from "@/lib/integracoes/metaEscrita";
 import { conectarToken, concluirOnboarding, conferirPagina, iniciarTesteCadastro, salvarDestino, salvarEscolhas, salvarNegocio } from "@/lib/onboarding/acoes";
 import { lerFatos } from "@/lib/onboarding/fatos";
@@ -514,6 +514,9 @@ O formato completo está em Configurações, no cartão Webhook genérico.`;
 
     case "pagina": {
       const r = o.pagina;
+      const { count: cadastros } = plataforma
+        ? { count: 0 }
+        : await supabase.from("leads").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).is("codigo_teste", null);
       const escolheDestino = !!plataforma && !o.destino;
       const irDireto = !!plataforma && o.destino === "checkout";
       conteudo = {
@@ -558,6 +561,8 @@ O formato completo está em Configurações, no cartão Webhook genérico.`;
                   <MensagemPronta para="quem cuida do site" texto={msgSiteCheckout} />
                 </div>
               </Cartao>
+            ) : cadastros ? (
+              <Aviso tom="ok">Os cadastros já estão chegando ao Adverdad: {inteiro(cadastros)} recebido(s). Não há nada para instalar para isso.</Aviso>
             ) : (
               <Cartao
                 titulo="Os cadastros precisam chegar ao Adverdad"
@@ -598,8 +603,8 @@ O formato completo está em Configurações, no cartão Webhook genérico.`;
         lateral: !escolheDestino && !irDireto && (
           <Cartao titulo="O que é conferido">
             <p className="text-sm text-ink-2">
-              Se a página abre, se {plataforma ? "a linha de rastreio está nela e se " : ""}o pixel é o mesmo que você escolheu na Meta. Pixel no Google Tag Manager só aparece no
-              navegador: nesse caso, mostramos um aviso e você pode seguir.
+              Se a página abre, se {plataforma ? "a linha de rastreio está nela e se " : ""}o pixel é o mesmo que você escolheu na Meta. Procuramos no código e nos scripts da
+              página. Quando o ID não pode ser lido daqui, como no Google Tag Manager, mostramos um aviso e você pode seguir.
             </p>
           </Cartao>
         ),

@@ -1,7 +1,6 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { lookup } from "node:dns/promises";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -15,7 +14,8 @@ import { montarUrlTeste, PARAMETROS_META } from "@/lib/rastreio/regras";
 import { rotaOrg } from "@/lib/rotas";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { permissoesDoToken, RespostasNegocio, usaCheckoutExterno, type Onboarding } from "./modelo";
-import { analisarPagina, ipPrivado, validarUrlPagina } from "./pagina";
+import { analisarPagina, validarUrlPagina } from "./pagina";
+import { abrirPagina, lerScripts } from "./rede";
 
 // Ações do assistente de configuração. Elas reaproveitam as conexões que já existem: aqui fica só o que é próprio
 // do passo a passo (guardar respostas, usar um token só, conferir a página, criar o teste sem anúncio).
@@ -146,34 +146,6 @@ export async function salvarDestino(_: Resultado, dados: FormData): Promise<Resu
   }
 }
 
-/** Abre a página sem seguir para endereços internos: cada salto é conferido antes de abrir. */
-async function abrirPagina(inicial: URL) {
-  let url = inicial;
-  for (let saltos = 0; saltos < 4; saltos++) {
-    const enderecos = await lookup(url.hostname, { all: true });
-    if (enderecos.some((e) => ipPrivado(e.address))) throw new Error("Esse endereço não é público.");
-    const r = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(10_000), headers: { "User-Agent": "Mozilla/5.0 (verificacao-adverdad)" } });
-    const destino = r.status >= 300 && r.status < 400 ? r.headers.get("location") : null;
-    if (!destino) {
-      // Só o começo da página interessa, e uma página enorme não pode travar o servidor.
-      const leitor = r.body?.getReader();
-      let html = "";
-      const decodificador = new TextDecoder();
-      while (leitor && html.length < 2_000_000) {
-        const { done, value } = await leitor.read();
-        if (done) break;
-        html += decodificador.decode(value, { stream: true });
-      }
-      await leitor?.cancel().catch(() => {});
-      return { status: r.status, html };
-    }
-    const proxima = validarUrlPagina(new URL(destino, url).toString());
-    if ("erro" in proxima) throw new Error(proxima.erro);
-    url = proxima.url;
-  }
-  throw new Error("A página redireciona demais.");
-}
-
 export async function conferirPagina(_: Resultado, dados: FormData): Promise<Resultado> {
   const orgId = String(dados.get("organizacao_id"));
   const v = validarUrlPagina(String(dados.get("url") ?? ""));
@@ -189,7 +161,16 @@ export async function conferirPagina(_: Resultado, dados: FormData): Promise<Res
     let resultado;
     try {
       const { status, html } = await abrirPagina(v.url);
-      resultado = analisarPagina({ url, status, html, em, pixelEsperado: config?.pixel_id ?? null, exigeScript: usaCheckoutExterno((org?.onboarding ?? {}) as Onboarding) });
+      const scripts = status < 400 ? await lerScripts(html, url) : [];
+      resultado = analisarPagina({
+        url,
+        status,
+        html,
+        scripts,
+        em,
+        pixelEsperado: config?.pixel_id ?? null,
+        exigeScript: usaCheckoutExterno((org?.onboarding ?? {}) as Onboarding),
+      });
     } catch (e) {
       resultado = {
         url,

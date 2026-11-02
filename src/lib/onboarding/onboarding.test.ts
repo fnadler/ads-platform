@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { SCRIPT_CHECKOUT } from "@/lib/vendas/plataformas/catalogo";
 import { funilSugerido, pendentes, permissoesDoToken, progresso, resumoEtapas, telaInicial, telas, type Fatos, type Onboarding } from "./modelo";
-import { analisarPagina, ipPrivado, pixelsNaPagina, temScriptCheckout, validarUrlPagina } from "./pagina";
+import { analisarPagina, ipPrivado, pixelsNaPagina, scriptsDaPagina, temScriptCheckout, validarUrlPagina } from "./pagina";
 
 const hotmart: Onboarding = { plataforma: "hotmart", funil: "venda_direta", site: "eu", campanhas: "sim" };
 const fatos = (extra: Partial<Fatos> = {}): Fatos => ({
@@ -168,10 +168,56 @@ describe("conferência da página", () => {
     expect(r.itens.at(-1)?.detalhe).toContain("9998887776665554");
   });
 
-  it("pixel invisível é só aviso, e menciona o gerenciador de tags", () => {
-    const r = analisarPagina({ ...base, html: '<script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>', pixelEsperado: "1741074303627470", exigeScript: false });
+  it("pixel só no JavaScript do site, como no GN: confere sem aviso", () => {
+    const r = analisarPagina({
+      ...base,
+      html: "<html></html>",
+      scripts: ['const a="1741074303627470";window.fbq("init",a)'],
+      pixelEsperado: "1741074303627470",
+      exigeScript: false,
+    });
+    expect(r.status).toBe("ok");
+    expect(r.itens.at(-1)?.titulo).toBe("Pixel certo na página");
+  });
+
+  it("outro pixel escrito no JavaScript é erro", () => {
+    expect(analisarPagina({ ...base, html: "", scripts: ["fbq('init','9998887776665554')"], pixelEsperado: "1741074303627470", exigeScript: false }).status).toBe("erro");
+  });
+
+  it("pixel sem ID legível é aviso, sem acusar erro", () => {
+    const r = analisarPagina({ ...base, html: "", scripts: ["window.fbq(a,b)"], pixelEsperado: "1741074303627470", exigeScript: false });
     expect(r.status).toBe("aviso");
-    expect(r.itens.at(-1)?.detalhe).toContain("Tag Manager");
+    expect(r.itens.at(-1)?.titulo).toContain("não consegui ler o ID");
+  });
+
+  it("Google Tag Manager é aviso; o ID dentro do contêiner confirma", () => {
+    const html = '<script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>';
+    const r = analisarPagina({ ...base, html, pixelEsperado: "1741074303627470", exigeScript: false });
+    expect(r.status).toBe("aviso");
+    expect(r.itens.at(-1)?.titulo).toContain("Tag Manager");
+    expect(analisarPagina({ ...base, html, scripts: ['{"vtp_pixelId":"1741074303627470"}'], pixelEsperado: "1741074303627470", exigeScript: false }).status).toBe("ok");
+  });
+
+  it("sem nenhum sinal, avisa e explica o que fazer", () => {
+    const r = analisarPagina({ ...base, html: "<html></html>", pixelEsperado: "1741074303627470", exigeScript: false });
+    expect(r.status).toBe("aviso");
+    expect(r.itens.at(-1)?.detalhe).toContain("Gerenciador de Eventos");
+  });
+
+  it("a linha de rastreio também vale dentro de um script do site", () => {
+    expect(analisarPagina({ ...base, html: "", scripts: [SCRIPT_CHECKOUT], pixelEsperado: null, exigeScript: true }).status).toBe("ok");
+  });
+
+  it("lista os scripts, os do site primeiro, sem endereços internos", () => {
+    const html = `<script src="https://cdn.fora.com/a.js"></script><script src="/_next/static/chunks/b.js?x=1&amp;y=2"></script><link rel="preload" as="script" href="/c.js"><script src="http://127.0.0.1/d.js"></script>self.__next_f.push(["/_next/static/chunks/e.js"])`;
+    const urls = scriptsDaPagina(html, "https://x.com/").map((u) => u.toString());
+    expect(urls[0]).toContain("x.com");
+    expect(urls).toContain("https://cdn.fora.com/a.js");
+    expect(urls).toContain("https://x.com/_next/static/chunks/b.js?x=1&y=2");
+    expect(urls).toContain("https://x.com/c.js");
+    expect(urls).toContain("https://x.com/_next/static/chunks/e.js");
+    expect(urls.join()).not.toContain("127.0.0.1");
+    expect(scriptsDaPagina(html, "https://x.com/", 2)).toHaveLength(2);
   });
 
   it("sem a linha de rastreio, quando ela é exigida, é erro", () => {
