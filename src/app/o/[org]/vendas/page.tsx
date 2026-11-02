@@ -14,6 +14,14 @@ const ATRIBUICAO: Record<string, { rotulo: string; tom: Tom }> = {
   nenhuma: { rotulo: "Sem anúncio", tom: "info" },
 };
 
+const SITUACAO_VENDA: Record<string, { rotulo: string; tom: Tom }> = {
+  pagamento: { rotulo: "Paga", tom: "ok" },
+  pendente: { rotulo: "Aguardando pagamento", tom: "alerta" },
+  expirada: { rotulo: "Não concluída", tom: "info" },
+  reembolso: { rotulo: "Reembolso", tom: "erro" },
+  chargeback: { rotulo: "Chargeback", tom: "erro" },
+};
+
 const hojeMenos = (dias: number, fuso: string) => new Date(Date.now() - dias * 86_400_000).toLocaleDateString("sv-SE", { timeZone: fuso });
 
 export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
@@ -123,6 +131,7 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
                 <tr>
                   <th>Quando</th>
                   <th>Valor</th>
+                  <th>Situação</th>
                   <th>Fonte</th>
                   <th>Anúncio</th>
                 </tr>
@@ -131,7 +140,10 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
                 {vendas.map((v) => (
                   <tr key={`${v.origem}:${v.id_externo}`}>
                     <td className="whitespace-nowrap">{dataHora(v.ocorrida_em, org.fuso)}</td>
-                    <td className={`num whitespace-nowrap ${v.tipo === "reembolso" ? "text-err" : ""}`}>{moeda(Number(v.valor), v.moeda)}</td>
+                    <td className={`num whitespace-nowrap ${Number(v.valor) < 0 ? "text-err" : ["pendente", "expirada"].includes(v.tipo) ? "text-ink-3" : ""}`}>{moeda(Number(v.valor), v.moeda)}</td>
+                    <td>
+                      <Etiqueta tom={SITUACAO_VENDA[v.tipo]?.tom ?? "info"}>{SITUACAO_VENDA[v.tipo]?.rotulo ?? v.tipo}</Etiqueta>
+                    </td>
                     <td>{v.origem}</td>
                     <td className="text-xs">{v.ad_id ? (nomeAnuncio.get(v.ad_id) ?? v.ad_id) : <span className="text-ink-2">sem anúncio</span>}</td>
                   </tr>
@@ -140,13 +152,13 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
             </Tabela>
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo="Nenhuma venda ainda">Conecte o Stripe (Configurações) ou importe um CSV.</Vazio>
+              <Vazio titulo="Nenhuma venda ainda">Conecte sua plataforma de venda (Configurações) ou importe um CSV.</Vazio>
             </div>
           )}
         </Cartao>
 
         {temPapel(papel, "gestor") && (
-          <Cartao titulo="Importar CSV" descricao="Para vendas que não chegam por webhook. Colunas: id_externo (obrigatória), tipo (lead, venda, reembolso, teste_iniciado, teste_cancelado, teste_reativado), data, valor, lead_id_externo, email e utm_* (inclusive utm_ad_id).">
+          <Cartao titulo="Importar CSV" descricao="Para vendas que não chegam por webhook. Colunas: id_externo (obrigatória), tipo (lead, venda, reembolso, chargeback, venda_pendente, venda_expirada, teste_iniciado, teste_cancelado, teste_reativado), data, valor, lead_id_externo, email e utm_* (inclusive utm_ad_id).">
             <Formulario acao={importarCsv} rotulo="Importar">
               <input type="hidden" name="organizacao_id" value={org.id} />
               <input type="file" name="arquivo" accept=".csv,text/csv" required className="text-sm" />

@@ -25,29 +25,65 @@ interface Linha {
   cliques_link: number;
   visualizacoes_pagina: number;
   leads_meta: number;
+  compras_meta: number;
   leads: number;
   testes: number;
   testes_cancelados: number;
   vendas: number;
   receita: number;
+  vendas_pendentes: number;
+  valor_pendente: number;
 }
 
-type Soma = Pick<Linha, "gasto" | "impressoes" | "cliques_link" | "visualizacoes_pagina" | "leads_meta" | "leads" | "testes" | "testes_cancelados" | "vendas" | "receita"> & { freqPeso: number };
+type Soma = Pick<
+  Linha,
+  | "gasto"
+  | "impressoes"
+  | "cliques_link"
+  | "visualizacoes_pagina"
+  | "leads_meta"
+  | "compras_meta"
+  | "leads"
+  | "testes"
+  | "testes_cancelados"
+  | "vendas"
+  | "receita"
+  | "vendas_pendentes"
+  | "valor_pendente"
+> & { freqPeso: number };
 const zero = (): Soma => ({
   gasto: 0,
   impressoes: 0,
   cliques_link: 0,
   visualizacoes_pagina: 0,
   leads_meta: 0,
+  compras_meta: 0,
   leads: 0,
   testes: 0,
   testes_cancelados: 0,
   vendas: 0,
   receita: 0,
+  vendas_pendentes: 0,
+  valor_pendente: 0,
   freqPeso: 0,
 });
 function somar(s: Soma, l: Linha) {
-  for (const k of ["gasto", "impressoes", "cliques_link", "visualizacoes_pagina", "leads_meta", "leads", "testes", "testes_cancelados", "vendas", "receita"] as const) s[k] += Number(l[k]);
+  for (const k of [
+    "gasto",
+    "impressoes",
+    "cliques_link",
+    "visualizacoes_pagina",
+    "leads_meta",
+    "compras_meta",
+    "leads",
+    "testes",
+    "testes_cancelados",
+    "vendas",
+    "receita",
+    "vendas_pendentes",
+    "valor_pendente",
+  ] as const)
+    s[k] += Number(l[k]);
   s.freqPeso += Number(l.frequencia) * Number(l.impressoes);
   return s;
 }
@@ -169,6 +205,47 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
   const ordemCor = new Map([...linhas].sort((a, b) => a.ad_id.localeCompare(b.ad_id)).map((l, i) => [l.ad_id, i]));
   const roas = (receita: number, gasto: number) => (receita ? decimal(razao(receita, gasto)) : "—");
   const destaque = "bg-accent-soft font-semibold text-ink";
+  const direta = org.funil === "venda_direta";
+  const comTeste = org.funil === "cadastro_teste_venda";
+  // Colunas que dependem do funil (as mesmas nas três tabelas).
+  const colunasFunil = direta ? (
+    <>
+      <th className="text-right">Compras (Meta)</th>
+      <th className="text-right">Pendentes</th>
+    </>
+  ) : (
+    <>
+      <th className="text-right">Leads (Meta)</th>
+      <th className="text-right">CPL</th>
+      <th className="text-right">Leads (sist.)</th>
+      {comTeste && <th className="text-right">Testes</th>}
+    </>
+  );
+  const celulasFunil = (s: Soma) =>
+    direta ? (
+      <>
+        <td>{inteiro(s.compras_meta)}</td>
+        <td>{inteiro(s.vendas_pendentes)}</td>
+      </>
+    ) : (
+      <>
+        <td>{inteiro(s.leads_meta)}</td>
+        <td>{moeda(razao(s.gasto, s.leads_meta), org.moeda)}</td>
+        <td>{inteiro(s.leads)}</td>
+        {comTeste && (
+          <td>
+            <Testes total={s.testes} cancelados={s.testes_cancelados} />
+          </td>
+        )}
+      </>
+    );
+  const indicadorPendentes = (
+    <Indicador
+      rotulo="Pagamento pendente"
+      valor={inteiro(total.vendas_pendentes)}
+      detalhe={total.vendas_pendentes ? `${moeda(total.valor_pendente, org.moeda)} em Pix ou boleto` : "Pix ou boleto gerados"}
+    />
+  );
 
   return (
     <>
@@ -205,16 +282,30 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         <Vazio titulo="Sem dados no período">Confira em Sincronizações se a Meta já foi carregada, ou escolha um período maior.</Vazio>
       ) : (
         <div className="grid gap-5">
-          <Indicadores className="grid-cols-2 xl:grid-cols-4">
+          <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
             <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
-            <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
-            <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />
-            <Indicador rotulo="Leads (sistema)" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio" />
-            <Indicador
-              rotulo="Testes"
-              valor={inteiro(total.testes)}
-              detalhe={total.leads ? `${pct(razao(total.testes, total.leads), 0)} dos leads${total.testes_cancelados ? ` · ${rotuloCancelados(total.testes_cancelados)}` : ""}` : undefined}
-            />
+            {direta ? (
+              <Indicador rotulo="Compras (Meta)" valor={inteiro(total.compras_meta)} detalhe="o que o Gerenciador conta" />
+            ) : (
+              <>
+                <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
+                <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />
+                <Indicador rotulo="Leads (sistema)" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio" />
+              </>
+            )}
+            {comTeste ? (
+              <Indicador
+                rotulo="Testes"
+                valor={inteiro(total.testes)}
+                detalhe={
+                  total.leads
+                    ? `${pct(razao(total.testes, total.leads), 0)} dos leads${total.testes_cancelados ? ` · ${rotuloCancelados(total.testes_cancelados)}` : ""}`
+                    : undefined
+                }
+              />
+            ) : (
+              indicadorPendentes
+            )}
             <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} de receita` : undefined} />
             <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="gasto ÷ vendas" destaque />
             <Indicador
@@ -225,41 +316,51 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
             />
           </Indicadores>
 
-          <Aviso>
-            <strong>Leads (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Leads (sistema)</strong> é o que chegou à sua fonte de venda com o anúncio de origem; é
-            sobre ele que calculamos testes, vendas e ROAS. <strong>Testes</strong> conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece.
-          </Aviso>
+          {direta ? (
+            <Aviso>
+              <strong>Compras (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Vendas</strong> é o que a sua plataforma confirmou, com o anúncio de origem; Pix e
+              boleto só contam depois de pagos, e reembolso e chargeback descontam da receita.
+            </Aviso>
+          ) : (
+            <>
+              <Aviso>
+                <strong>Leads (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Leads (sistema)</strong> é o que chegou à sua fonte de venda com o anúncio de origem;
+                é sobre ele que calculamos {comTeste ? "testes, vendas" : "vendas"} e ROAS.
+                {comTeste && " Testes conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece."}
+              </Aviso>
 
-          <Cartao>
-            <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Leads (Meta)" : "Leads (sistema)"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
-            <details className="mt-3 text-sm">
-              <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">
-                Ver em tabela
-              </summary>
-              <div className="mt-3 overflow-hidden rounded-md border border-line">
-                <Tabela>
-                  <thead>
-                    <tr>
-                      <th>Dia</th>
-                      <th className="text-right">Acumulado</th>
-                      <th>Dia anterior equivalente</th>
-                      <th className="text-right">Acumulado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="[&_.num]:tabular-nums">
-                    {pontos.map((p) => (
-                      <tr key={p.rotulo}>
-                        <td>{p.rotulo}</td>
-                        <td className="num">{inteiro(p.atual)}</td>
-                        <td className="text-ink-2">{p.rotuloAnterior}</td>
-                        <td className="num">{inteiro(p.anterior)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Tabela>
-              </div>
-            </details>
-          </Cartao>
+              <Cartao>
+                <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Leads (Meta)" : "Leads (sistema)"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
+                <details className="mt-3 text-sm">
+                  <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">
+                    Ver em tabela
+                  </summary>
+                  <div className="mt-3 overflow-hidden rounded-md border border-line">
+                    <Tabela>
+                      <thead>
+                        <tr>
+                          <th>Dia</th>
+                          <th className="text-right">Acumulado</th>
+                          <th>Dia anterior equivalente</th>
+                          <th className="text-right">Acumulado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&_.num]:tabular-nums">
+                        {pontos.map((p) => (
+                          <tr key={p.rotulo}>
+                            <td>{p.rotulo}</td>
+                            <td className="num">{inteiro(p.atual)}</td>
+                            <td className="text-ink-2">{p.rotuloAnterior}</td>
+                            <td className="num">{inteiro(p.anterior)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Tabela>
+                  </div>
+                </details>
+              </Cartao>
+            </>
+          )}
 
           {!campanha ? (
             <Cartao titulo={`Campanhas · últimos ${dias} dias`} acoes={<span className="text-sm text-ink-3">Clique numa campanha para ver os anúncios</span>} rente>
@@ -271,10 +372,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                     <th className="text-right">Impressões</th>
                     <th className="text-right">Freq.</th>
                     <th className="text-right">CTR</th>
-                    <th className="text-right">Leads (Meta)</th>
-                    <th className="text-right">CPL</th>
-                    <th className="text-right">Leads (sist.)</th>
-                    <th className="text-right">Testes</th>
+                    {colunasFunil}
                     <th className="text-right">Vendas</th>
                     <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
                     <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
@@ -295,10 +393,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                         <td>{inteiro(c.soma.impressoes)}</td>
                         <td>{decimal(razao(c.soma.freqPeso, c.soma.impressoes))}</td>
                         <td>{pct(razao(c.soma.cliques_link, c.soma.impressoes), 2)}</td>
-                        <td>{inteiro(c.soma.leads_meta)}</td>
-                        <td>{moeda(razao(c.soma.gasto, c.soma.leads_meta), org.moeda)}</td>
-                        <td>{inteiro(c.soma.leads)}</td>
-                        <td><Testes total={c.soma.testes} cancelados={c.soma.testes_cancelados} /></td>
+                        {celulasFunil(c.soma)}
                         <td>{inteiro(c.soma.vendas)}</td>
                         <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
                         <td className={destaque}>{roas(c.soma.receita, c.soma.gasto)}</td>
@@ -311,10 +406,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <td>{inteiro(total.impressoes)}</td>
                       <td>—</td>
                       <td>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
-                      <td>{inteiro(total.leads_meta)}</td>
-                      <td>{moeda(razao(total.gasto, total.leads_meta), org.moeda)}</td>
-                      <td>{inteiro(total.leads)}</td>
-                      <td><Testes total={total.testes} cancelados={total.testes_cancelados} /></td>
+                      {celulasFunil(total)}
                       <td>{inteiro(total.vendas)}</td>
                       <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
                       <td className={destaque}>{roas(total.receita, total.gasto)}</td>
@@ -332,10 +424,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <tr>
                         <th>Conjunto</th>
                         <th className="text-right">Gasto</th>
-                        <th className="text-right">Leads (Meta)</th>
-                        <th className="text-right">CPL</th>
-                        <th className="text-right">Leads (sist.)</th>
-                        <th className="text-right">Testes</th>
+                        {colunasFunil}
                         <th className="text-right">Vendas</th>
                         <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
                         <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
@@ -348,10 +437,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                           <tr key={k}>
                             <td className="font-medium text-ink">{cj.nome}</td>
                             <td>{moeda(cj.soma.gasto, org.moeda)}</td>
-                            <td>{inteiro(cj.soma.leads_meta)}</td>
-                            <td>{moeda(razao(cj.soma.gasto, cj.soma.leads_meta), org.moeda)}</td>
-                            <td>{inteiro(cj.soma.leads)}</td>
-                            <td><Testes total={cj.soma.testes} cancelados={cj.soma.testes_cancelados} /></td>
+                            {celulasFunil(cj.soma)}
                             <td>{inteiro(cj.soma.vendas)}</td>
                             <td className={destaque}>{moeda(razao(cj.soma.gasto, cj.soma.vendas), org.moeda)}</td>
                             <td className={destaque}>{roas(cj.soma.receita, cj.soma.gasto)}</td>
@@ -369,10 +455,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <th className="text-right">Gasto</th>
                       <th className="text-right">Freq.</th>
                       <th className="text-right">CTR</th>
-                      <th className="text-right">Leads (Meta)</th>
-                      <th className="text-right">CPL</th>
-                      <th className="text-right">Leads (sist.)</th>
-                      <th className="text-right">Testes</th>
+                      {colunasFunil}
                       <th className="text-right">Vendas</th>
                       <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
                       <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
@@ -395,10 +478,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                           <td>{moeda(Number(l.gasto), org.moeda)}</td>
                           <td>{decimal(Number(l.frequencia))}</td>
                           <td>{pct(razao(Number(l.cliques_link), Number(l.impressoes)), 2)}</td>
-                          <td>{inteiro(Number(l.leads_meta))}</td>
-                          <td>{moeda(razao(Number(l.gasto), Number(l.leads_meta)), org.moeda)}</td>
-                          <td>{inteiro(Number(l.leads))}</td>
-                          <td><Testes total={Number(l.testes)} cancelados={Number(l.testes_cancelados)} /></td>
+                          {celulasFunil(somar(zero(), l))}
                           <td>{inteiro(Number(l.vendas))}</td>
                           <td className={destaque}>{moeda(razao(Number(l.gasto), Number(l.vendas)), org.moeda)}</td>
                           <td className={destaque}>{roas(Number(l.receita), Number(l.gasto))}</td>

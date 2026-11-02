@@ -55,7 +55,7 @@ const EventoCancelado = z.object({
 const EventoReativado = EventoCancelado.extend({ tipo: z.literal("teste_reativado") });
 
 const EventoVenda = z.object({
-  tipo: z.enum(["venda", "reembolso"]),
+  tipo: z.enum(["venda", "reembolso", "chargeback", "venda_pendente", "venda_expirada"]),
   id_externo: z.string().trim().min(1).max(200), // da venda/pedido
   valor: z.coerce.number().finite(),
   moeda: z.string().trim().length(3).toUpperCase().optional(),
@@ -71,7 +71,9 @@ export const Evento = z.discriminatedUnion("tipo", [EventoLead, EventoTeste, Eve
 export type Evento = z.infer<typeof Evento>;
 export const CorpoWebhook = z.union([z.object({ eventos: z.array(z.unknown()).min(1).max(500) }), z.record(z.string(), z.unknown())]);
 
-type Origem = "webhook" | "stripe" | "csv";
+const TIPO_VENDA = { venda: "pagamento", reembolso: "reembolso", chargeback: "chargeback", venda_pendente: "pendente", venda_expirada: "expirada" } as const;
+
+type Origem = "webhook" | "stripe" | "csv" | "hotmart" | "kiwify";
 interface Contexto {
   admin: SupabaseClient;
   organizacaoId: string;
@@ -94,7 +96,7 @@ const semVazios = <T extends object>(o: T) => Object.fromEntries(Object.entries(
 const prefixar = (a: Atribuicao | undefined, prefixo: string) => Object.fromEntries(Object.entries(semVazios(a ?? {})).filter(([k]) => k.startsWith("utm_")).map(([k, v]) => [`${prefixo}${k}`, v]));
 
 /** Payload que fica guardado (sem e-mail, telefone e nome). */
-function payloadSeguro(e: Evento) {
+export function payloadSeguro(e: Evento) {
   const copia: Record<string, unknown> = { ...e };
   delete copia.email;
   delete copia.telefone;
@@ -213,15 +215,20 @@ async function aplicarEvento(ctx: Contexto, e: Evento): Promise<void> {
     return;
   }
 
-  const reembolso = e.tipo === "reembolso";
+  // Pix ou boleto gerado e pedido não concluído nunca desfazem um pagamento (a entrega pode chegar fora de ordem).
+  if (e.tipo === "venda_pendente" || e.tipo === "venda_expirada") {
+    const { data: atual } = await ctx.admin.from("vendas").select("tipo").eq("organizacao_id", ctx.organizacaoId).eq("origem", ctx.origem).eq("id_externo", e.id_externo).maybeSingle();
+    if (atual?.tipo === "pagamento") return;
+  }
+  const negativa = e.tipo === "reembolso" || e.tipo === "chargeback";
   const { error } = await ctx.admin.from("vendas").upsert(
     {
       organizacao_id: ctx.organizacaoId,
       conexao_id: ctx.conexaoId,
       origem: ctx.origem,
       id_externo: e.id_externo,
-      tipo: reembolso ? "reembolso" : "pagamento",
-      valor: reembolso ? -Math.abs(e.valor) : e.valor,
+      tipo: TIPO_VENDA[e.tipo],
+      valor: negativa ? -Math.abs(e.valor) : e.valor,
       moeda: e.moeda ?? "BRL",
       ocorrida_em: em(e.ocorrido_em),
       lead_id_externo: e.lead_id_externo ?? null,
@@ -235,7 +242,7 @@ async function aplicarEvento(ctx: Contexto, e: Evento): Promise<void> {
     { onConflict: "organizacao_id,origem,id_externo" },
   );
   if (error) throw new Error(error.message);
-  if (!reembolso && e.primeira && e.lead_id_externo) {
+  if (e.tipo === "venda" && e.primeira && e.lead_id_externo) {
     await ctx.admin
       .from("leads")
       .update({ primeiro_pagamento_em: em(e.ocorrido_em) })

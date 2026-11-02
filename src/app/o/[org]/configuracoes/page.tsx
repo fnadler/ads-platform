@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { Copiavel } from "@/components/Formulario";
 import { Formulario } from "@/components/Formulario";
 import { IconeSeta } from "@/components/Icones";
-import { Aviso, BotaoLink, Campo, Cartao, Etiqueta, Tabela, Titulo, type Tom } from "@/components/ui";
+import { Aviso, BotaoLink, Campo, Cartao, Etiqueta, Selecao, Tabela, Titulo, type Tom } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
-import { alterarConta, conectarMeta, conectarStripe, gerarTokenWebhook, importarHistoricoStripe, removerConexao, salvarMetricas } from "@/lib/conexoes/acoes";
+import { alterarConta, conectarMeta, conectarStripe, gerarTokenWebhook, importarHistoricoStripe, removerConexao, salvarFunil, salvarMetricas } from "@/lib/conexoes/acoes";
 import { dataHora, decimal } from "@/lib/formato";
 import { rotaOrg } from "@/lib/rotas";
 import { urlSistema } from "@/lib/url";
+import { FUNIS, TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
+import { CartaoPlataforma, type ConexaoPlataforma, type EventoPlataforma } from "./CartaoPlataforma";
 import { CartaoPublicacao } from "./CartaoPublicacao";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -40,6 +42,12 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
     supabase.rpc("acoes_meta_vistas", { p_org: org.id }),
     urlSistema(),
   ]);
+  const conexaoPlataforma = (tipo: string) => (conexoes as Array<ConexaoPlataforma & { tipo: string }> | null)?.find((c) => c.tipo === tipo);
+  const idsPlataforma = TIPOS_PLATAFORMA.map(conexaoPlataforma).flatMap((c) => (c ? [c.id] : []));
+  const { data: recebidos } = idsPlataforma.length
+    ? await supabase.from("eventos_recebidos").select("conexao_id, tipo, chave_idempotencia, payload, recebido_em, erro").in("conexao_id", idsPlataforma).order("recebido_em", { ascending: false }).limit(40)
+    : { data: [] };
+  const eventosDe = (id?: string) => ((recebidos ?? []) as Array<EventoPlataforma & { conexao_id: string }>).filter((e) => e.conexao_id === id).slice(0, 5);
   const de = (tipo: Conexao["tipo"]) => (conexoes as Conexao[] | null)?.find((c) => c.tipo === tipo);
   const meta = de("meta");
   const stripe = de("stripe");
@@ -64,6 +72,24 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
         Conexões e pessoas
       </Titulo>
       <div className="grid gap-6">
+        <Cartao titulo="Como você vende" descricao="Define o que o Desempenho e o Início acompanham.">
+          {gestor ? (
+            <Formulario acao={salvarFunil} rotulo="Salvar" variante="secundario" className="flex flex-col gap-3">
+              {hidden}
+              <Selecao rotulo="Funil" name="funil" defaultValue={org.funil}>
+                {Object.entries(FUNIS).map(([k, f]) => (
+                  <option key={k} value={k}>
+                    {f.rotulo}
+                  </option>
+                ))}
+              </Selecao>
+              <p className="text-xs text-ink-2">{FUNIS[org.funil].descricao}</p>
+            </Formulario>
+          ) : (
+            <p className="text-sm">{FUNIS[org.funil].rotulo}</p>
+          )}
+        </Cartao>
+
         <Cartao
           titulo="Meta (anúncios)"
           descricao="Só leitura: o sistema nunca cria, edita ou pausa nada na sua conta."
@@ -163,7 +189,7 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
                 <li>
                   Stripe → Desenvolvedores → Chaves de API → “Criar chave restrita” com <strong>leitura</strong> em Faturas, Assinaturas, Clientes e Cobranças. Cole abaixo e salve.
                 </li>
-                <li>Desenvolvedores → Webhooks → “Adicionar destino”: cole o endereço que aparece acima, com os três eventos.</li>
+                <li>Desenvolvedores → Webhooks → “Adicionar destino”: cole o endereço que aparece acima, com os cinco eventos acima.</li>
                 <li>Copie o “Segredo de assinatura” (whsec_…) do destino e salve aqui.</li>
               </ol>
               <Formulario acao={conectarStripe} rotulo="Validar e salvar" className="grid gap-3">
@@ -197,6 +223,10 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
           )}
         </Cartao>
 
+        {TIPOS_PLATAFORMA.map((t) => (
+          <CartaoPlataforma key={t} tipo={t} conexao={conexaoPlataforma(t)} eventos={eventosDe(conexaoPlataforma(t)?.id)} base={base} orgId={org.id} dono={dono} fuso={org.fuso} />
+        ))}
+
         <Cartao titulo="Webhook genérico (leads e vendas)" descricao="Para o seu site, checkout próprio ou ferramenta de automação enviarem leads e vendas com os UTMs." acoes={etiqueta(webhook)}>
           <div className="mb-4 flex flex-col gap-1 text-sm">
             <span className="font-medium">Endereço:</span>
@@ -218,7 +248,10 @@ Content-Type: application/json
 { "tipo": "teste_cancelado", "id_externo": "id-do-cliente" }
 { "tipo": "teste_reativado", "id_externo": "id-do-cliente" }
 { "tipo": "venda", "id_externo": "pedido-123", "valor": 21.5, "lead_id_externo": "id-do-cliente" }
+{ "tipo": "venda_pendente", "id_externo": "pedido-123", "valor": 21.5 }  (Pix ou boleto gerado; "venda" no mesmo id confirma)
+{ "tipo": "venda_expirada", "id_externo": "pedido-123", "valor": 21.5 }
 { "tipo": "reembolso", "id_externo": "pedido-123", "valor": 21.5, "lead_id_externo": "id-do-cliente" }
+{ "tipo": "chargeback", "id_externo": "pedido-123", "valor": 21.5, "lead_id_externo": "id-do-cliente" }
 
 Vários de uma vez: { "eventos": [ … ] } (até 500). Reenviar não duplica.`}</pre>
           </details>

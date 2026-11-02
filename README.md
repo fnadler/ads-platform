@@ -101,6 +101,16 @@ Em **Configurações → Meta**, cole o token de um **usuário do sistema** do p
 3. No Stripe, crie um destino de webhook com o endereço que a tela mostra e os eventos `invoice.paid`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` e `charge.refunded`.
 4. Cole o segredo `whsec_…` na tela e clique em **Importar histórico** para trazer os últimos 365 dias.
 
+**Hotmart e Kiwify:**
+1. Em **Configurações → Como você vende**, escolha o funil (infoproduto costuma ser **Venda direta no checkout**).
+2. Em **Configurações → Hotmart** ou **Kiwify**, clique em conectar para ver o endereço do webhook (`/api/webhook/plataforma/<id da conexão>`) e cole o Hottok ou o token.
+3. A conexão nasce em **modo de teste**: o que chega aparece na tela, sem entrar nos números, porque os botões de teste das plataformas mandam compras fictícias. Confira e clique em **Passar a contar as vendas**.
+4. O anúncio de origem vem no `sck` e a campanha no `src`, já incluídos nos Parâmetros de URL. Quem tem página própria antes do checkout cola a linha que aparece no cartão, para levar os parâmetros até o link de compra.
+
+Valor da venda: na Hotmart, a comissão líquida do produtor (sem o evento trazer a comissão, o preço pago); na Kiwify, por enquanto, o valor cobrado.
+
+Estados da venda: `pagamento`, `pendente` (Pix ou boleto gerado), `expirada` (não concluída), `reembolso` e `chargeback`. Só pagamento, reembolso e chargeback entram na receita.
+
 **CSV:** em **Leads e vendas → Importar CSV**, com as colunas `id_externo`, `tipo`, `data`, `valor`, `lead_id_externo`, `email` e `utm_*`.
 
 ### Rastreio

@@ -1,9 +1,10 @@
 // Regras do rastreio, puras (servidor e tela). A atribuição usa os IDs que a Meta preenche nos
-// "Parâmetros de URL" do anúncio; os nomes (utm_campaign, utm_content) vão junto só para leitura humana.
+// "Parâmetros de URL" do anúncio; os nomes (utm_campaign, utm_content) vão junto só para leitura humana. Hotmart e
+// Kiwify não repassam utm_ad_id: nelas, o anúncio vai no sck e a campanha no src.
 
 /** "Parâmetros de URL" a colar em cada anúncio da Meta. */
 export const PARAMETROS_META =
-  "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_campaign_id={{campaign.id}}&utm_adset_id={{adset.id}}&utm_ad_id={{ad.id}}";
+  "utm_source=meta&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&utm_campaign_id={{campaign.id}}&utm_adset_id={{adset.id}}&utm_ad_id={{ad.id}}&sck={{ad.id}}&src={{campaign.id}}";
 
 export type StatusRastreio = "ok" | "alerta" | "erro";
 export interface Problema {
@@ -24,7 +25,7 @@ export function parametro(tags: string, nome: string) {
 const ehMacroOuId = (v: string | null, macro: string) => !!v && (v.replace(/\s/g, "").includes(`{{${macro}}}`) || /^\d{6,}$/.test(v));
 
 /** Avalia os "Parâmetros de URL" de um anúncio. Erro: o lead não seria atribuído ao anúncio. */
-export function avaliarParametros(urlTags: string | null): { status: StatusRastreio; problemas: Problema[] } {
+export function avaliarParametros(urlTags: string | null, opcoes: { checkout?: boolean } = {}): { status: StatusRastreio; problemas: Problema[] } {
   if (!urlTags?.trim())
     return { status: "erro", problemas: [{ gravidade: "erro", texto: "Anúncio sem “Parâmetros de URL”: nenhum lead dele chega com o anúncio de origem." }] };
   if (/%7B%7B/i.test(urlTags))
@@ -34,6 +35,7 @@ export function avaliarParametros(urlTags: string | null): { status: StatusRastr
   if (!ehMacroOuId(p("utm_ad_id"), "ad.id")) problemas.push({ gravidade: "erro", texto: "Falta o ID do anúncio: utm_ad_id={{ad.id}}. Sem ele a venda não chega ao criativo." });
   if (!ehMacroOuId(p("utm_campaign_id"), "campaign.id")) problemas.push({ gravidade: "erro", texto: "Falta o ID da campanha: utm_campaign_id={{campaign.id}}." });
   if (!ehMacroOuId(p("utm_adset_id"), "adset.id")) problemas.push({ gravidade: "alerta", texto: "Falta o ID do conjunto: utm_adset_id={{adset.id}}." });
+  if (opcoes.checkout && !ehMacroOuId(p("sck"), "ad.id")) problemas.push({ gravidade: "erro", texto: "Falta sck={{ad.id}}: sem ele, a venda na Hotmart ou na Kiwify chega sem o anúncio de origem." });
   if (!p("utm_source")) problemas.push({ gravidade: "alerta", texto: "Falta utm_source=meta (a origem aparece como desconhecida nos relatórios)." });
   return { status: problemas.some((x) => x.gravidade === "erro") ? "erro" : problemas.length ? "alerta" : "ok", problemas };
 }

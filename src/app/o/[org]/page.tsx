@@ -4,12 +4,13 @@ import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { avaliarParametros } from "@/lib/rastreio/regras";
 import { rotaOrg } from "@/lib/rotas";
+import { PLATAFORMAS_VENDA, TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
 
 // Início: o que falta para a campanha nascer rastreada, na ordem em que precisa acontecer.
 export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]">) {
   const { org: slug } = await params;
   const { org, supabase } = await exigirOrganizacao(slug);
-  const [{ data: conexoes }, { data: contas }, { data: sinc }, { data: anuncios }, { data: teste }, { count: leads }, { data: ultimoLead }, { count: vendas }] = await Promise.all([
+  const [{ data: conexoes }, { data: contas }, { data: sinc }, { data: anuncios }, { data: teste }, { count: leads }, { data: ultimoLead }, { count: vendas }, { count: vendasComAnuncio }] = await Promise.all([
     supabase.from("conexoes").select("tipo, status").eq("organizacao_id", org.id),
     supabase.from("contas_anuncio").select("account_id").eq("organizacao_id", org.id).eq("ativa", true),
     supabase.from("sincronizacoes").select("status, terminado_em").eq("organizacao_id", org.id).eq("tipo", "meta").eq("status", "ok").order("terminado_em", { ascending: false }).limit(1).maybeSingle(),
@@ -17,25 +18,30 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
     supabase.from("verificacoes_rastreio").select("status, verificado_em").eq("organizacao_id", org.id).order("criado_em", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).is("codigo_teste", null),
     supabase.from("leads").select("recebido_em").eq("organizacao_id", org.id).order("recebido_em", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id),
+    supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento"),
+    supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento").not("utm_ad_id", "is", null),
   ]);
   const conexao = (tipo: string) => conexoes?.find((c) => c.tipo === tipo);
-  const fonteOk = conexao("webhook")?.status === "ativa" || conexao("stripe")?.status === "ativa";
-  const semRastreio = (anuncios ?? []).filter((a) => avaliarParametros(a.url_tags).status === "erro").length;
+  const plataformas = TIPOS_PLATAFORMA.flatMap((t) => (conexao(t) ? [{ rotulo: PLATAFORMAS_VENDA[t].rotulo, ativa: conexao(t)!.status === "ativa" }] : []));
+  const fonteOk = conexao("webhook")?.status === "ativa" || conexao("stripe")?.status === "ativa" || plataformas.some((p) => p.ativa);
+  const direta = org.funil === "venda_direta";
+  const semRastreio = (anuncios ?? []).filter((a) => avaliarParametros(a.url_tags, { checkout: plataformas.length > 0 }).status === "erro").length;
   const r = (resto: string) => rotaOrg(slug, resto);
 
   const passos: Array<{ ok: boolean; titulo: string; detalhe: string; href: string }> = [
     { ok: conexao("meta")?.status === "ativa" && !!contas?.length, titulo: "Conectar a Meta e ligar a conta de anúncios", detalhe: contas?.length ? `${contas.length} conta(s) ligada(s)` : "Token do usuário do sistema", href: r("/configuracoes") },
-    { ok: fonteOk, titulo: "Conectar a fonte de venda", detalhe: [conexao("webhook") && "webhook", conexao("stripe") && `Stripe (${conexao("stripe")!.status})`].filter(Boolean).join(" · ") || "Webhook, Stripe ou CSV", href: r("/configuracoes") },
+    { ok: fonteOk, titulo: "Conectar a fonte de venda", detalhe: [conexao("webhook") && "webhook", conexao("stripe") && `Stripe (${conexao("stripe")!.status})`, ...plataformas.map((p) => p.rotulo)].filter(Boolean).join(" · ") || "Hotmart, Kiwify, Stripe, webhook ou CSV", href: r("/configuracoes") },
     {
       ok: !!anuncios?.length && semRastreio === 0,
       titulo: "Parâmetros de URL em todos os anúncios",
       detalhe: !anuncios?.length ? "Nenhum anúncio ativo ou em análise lido ainda" : semRastreio ? `${semRastreio} anúncio(s) sem rastreio` : `${anuncios.length} anúncio(s) ok`,
       href: r("/rastreio"),
     },
-    { ok: teste?.status === "ok", titulo: "Teste de ponta a ponta", detalhe: teste ? (teste.status === "ok" ? `OK em ${dataHora(teste.verificado_em, org.fuso)}` : teste.status === "problema" ? "Com problema" : "Aguardando o lead de teste") : "Ainda não feito", href: r("/rastreio") },
+    ...(direta ? [] : [{ ok: teste?.status === "ok", titulo: "Teste de ponta a ponta", detalhe: teste ? (teste.status === "ok" ? `OK em ${dataHora(teste.verificado_em, org.fuso)}` : teste.status === "problema" ? "Com problema" : "Aguardando o lead de teste") : "Ainda não feito", href: r("/rastreio") }]),
     { ok: !!sinc, titulo: "Primeira sincronização da Meta", detalhe: sinc ? `Última: ${dataHora(sinc.terminado_em, org.fuso)}` : "Na fila ou não iniciada", href: r("/sincronizacoes") },
-    { ok: (leads ?? 0) > 0, titulo: "Leads chegando", detalhe: `${leads ?? 0} lead(s), ${vendas ?? 0} venda(s)${ultimoLead ? ` · último ${dataHora(ultimoLead.recebido_em, org.fuso)}` : ""}`, href: r("/vendas") },
+    direta
+      ? { ok: (vendasComAnuncio ?? 0) > 0, titulo: "Vendas chegando com o anúncio", detalhe: `${vendas ?? 0} venda(s), ${vendasComAnuncio ?? 0} com anúncio de origem`, href: r("/vendas") }
+      : { ok: (leads ?? 0) > 0, titulo: "Leads chegando", detalhe: `${leads ?? 0} lead(s), ${vendas ?? 0} venda(s)${ultimoLead ? ` · último ${dataHora(ultimoLead.recebido_em, org.fuso)}` : ""}`, href: r("/vendas") },
   ];
   const prontos = passos.filter((p) => p.ok).length;
   const proximo = passos.find((p) => !p.ok);

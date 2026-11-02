@@ -9,6 +9,7 @@ import { normalizarContaMeta, validarTokenMeta } from "@/lib/integracoes/meta";
 import { validarChaveStripe } from "@/lib/integracoes/stripe";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { urlSistema } from "@/lib/url";
+import { ehPlataforma, FUNIS, PLATAFORMAS_VENDA, type TipoPlataforma } from "@/lib/vendas/plataformas/catalogo";
 import { lerSegredo, salvarSegredo, type SegredoStripe } from "./segredos";
 
 // Conexões da organização. Credenciais só passam por aqui: validadas na hora com uma chamada de leitura,
@@ -16,7 +17,7 @@ import { lerSegredo, salvarSegredo, type SegredoStripe } from "./segredos";
 
 const mensagem = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-async function gravarConexao(orgId: string, usuarioId: string, tipo: "meta" | "stripe" | "webhook", nome: string, campos: Record<string, unknown>) {
+async function gravarConexao(orgId: string, usuarioId: string, tipo: "meta" | "stripe" | "webhook" | TipoPlataforma, nome: string, campos: Record<string, unknown>) {
   const admin = criarClienteAdmin();
   const { data, error } = await admin
     .from("conexoes")
@@ -196,6 +197,74 @@ export async function importarHistoricoStripe(_: Resultado, dados: FormData): Pr
     if (error) return { erro: error.message };
     refresh();
     return { mensagem: "Importação na fila. Acompanhe em Sincronizações." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+// ───────────────────────────── Plataformas de venda ─────────────────────────────
+
+/**
+ * Sem token, só cria a conexão para mostrar o endereço (a Hotmart e a Kiwify pedem o endereço ao criar o
+ * webhook). Ela nasce em modo de teste, porque os botões de teste das plataformas mandam compras fictícias.
+ */
+export async function conectarPlataforma(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const tipo = String(dados.get("tipo"));
+  const segredo = String(dados.get("segredo") ?? "").trim();
+  if (!ehPlataforma(tipo)) return { erro: "Plataforma desconhecida." };
+  if (dados.has("segredo") && segredo.length < 8) return { erro: `Cole o ${PLATAFORMAS_VENDA[tipo].campoSegredo} completo.` };
+  try {
+    const { usuario, supabase } = await acessoOrganizacao(orgId, "dono");
+    const admin = criarClienteAdmin();
+    const nome = PLATAFORMAS_VENDA[tipo].rotulo;
+    const { data: atual } = await admin.from("conexoes").select("id, status, config").eq("organizacao_id", orgId).eq("tipo", tipo).eq("nome", nome).maybeSingle();
+    const { conexao } = await gravarConexao(orgId, usuario.id, tipo, nome, {
+      status: segredo || atual?.status === "ativa" ? "ativa" : "pendente",
+      ultimo_erro: null,
+      ...(segredo ? { validado_em: new Date().toISOString() } : {}),
+      config: atual?.config ?? { modo_teste: true },
+    });
+    if (segredo) await salvarSegredo(admin, conexao, { segredo });
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: `conexao.${tipo}`, p_detalhes: { com_token: !!segredo } });
+    refresh();
+    return { mensagem: segredo ? "Token salvo. Envie um evento de teste e confira abaixo." : "Conexão criada. Siga os passos para configurar." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+export async function alterarModoPlataforma(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const id = String(dados.get("id"));
+  const modoTeste = dados.get("modo_teste") === "sim";
+  try {
+    const { supabase } = await acessoOrganizacao(orgId, "dono");
+    const admin = criarClienteAdmin();
+    const { data: atual } = await admin.from("conexoes").select("tipo, config").eq("id", id).eq("organizacao_id", orgId).maybeSingle();
+    if (!atual || !ehPlataforma(atual.tipo)) return { erro: "Conexão não encontrada." };
+    const { error } = await admin.from("conexoes").update({ config: { ...(atual.config as object), modo_teste: modoTeste }, atualizado_em: new Date().toISOString() }).eq("id", id);
+    if (error) return { erro: error.message };
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "conexao.modo_teste", p_detalhes: { id, modo_teste: modoTeste } });
+    refresh();
+    return { mensagem: modoTeste ? "Modo de teste ligado: as próximas vendas não entram nos números." : "Pronto: as próximas vendas entram nos números." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+/** Tipo de funil da organização: decide o que o Desempenho e o Início mostram. */
+export async function salvarFunil(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const funil = String(dados.get("funil"));
+  if (!(funil in FUNIS)) return { erro: "Escolha um funil." };
+  try {
+    const { supabase } = await acessoOrganizacao(orgId, "gestor");
+    const { error } = await criarClienteAdmin().from("organizacoes").update({ funil }).eq("id", orgId);
+    if (error) return { erro: error.message };
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "organizacao.funil", p_detalhes: { funil } });
+    refresh();
+    return { mensagem: "Funil salvo." };
   } catch (e) {
     return { erro: mensagem(e) };
   }

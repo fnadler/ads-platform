@@ -50,6 +50,27 @@ beforeAll(async () => {
 });
 
 describe("desempenho_anuncios", () => {
+  it("pendente e não concluída ficam fora da receita; chargeback desconta", async () => {
+    const soma = async () => (await como(db, dono, () => db.query<Record<string, string | number>>("select * from public.desempenho_anuncios($1, '2026-11-03', '2026-11-04')", [org]))).rows.find((x) => x.ad_id === "111111")!;
+    const base = await soma();
+    await db.query(
+      `insert into public.vendas (organizacao_id, origem, id_externo, valor, ocorrida_em, tipo, utm_ad_id) values
+         ($1, 'hotmart', 'HP1', 100, '2026-11-04T12:00:00Z', 'pendente', '111111'),
+         ($1, 'hotmart', 'HP2', 100, '2026-11-04T12:00:00Z', 'expirada', '111111'),
+         ($1, 'hotmart', 'HP3', 50, '2026-11-04T12:00:00Z', 'pagamento', '111111'),
+         ($1, 'kiwify', 'K3:chargeback', -50, '2026-11-04T13:00:00Z', 'chargeback', '111111')`,
+      [org],
+    );
+    const depois = await soma();
+    expect(Number(depois.receita)).toBe(Number(base.receita));
+    expect(Number(depois.vendas)).toBe(Number(base.vendas) + 1);
+    expect(depois).toMatchObject({ vendas_pendentes: 1 });
+    expect(Number(depois.valor_pendente)).toBe(100);
+    const c = (await como(db, dono, () => db.query<Record<string, string>>("select * from public.cobertura_atribuicao($1, '2026-11-03', '2026-11-04')", [org]))).rows[0];
+    expect(Number(c.receita)).toBe(41.5);
+    await db.query("delete from public.vendas where origem in ('hotmart', 'kiwify')");
+  });
+
   it("separa os testes cancelados, sem contar quem pagou", async () => {
     const soma = async () => (await como(db, dono, () => db.query<Record<string, string | number>>("select * from public.desempenho_anuncios($1, '2026-11-03', '2026-11-04')", [org]))).rows.find((x) => x.ad_id === "111111")!;
     await db.query("update public.leads set teste_iniciado_em = now(), teste_cancelado_em = now() where id_externo = 'u2'");

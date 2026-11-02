@@ -6,6 +6,13 @@ describe("avaliarParametros", () => {
     expect(avaliarParametros(PARAMETROS_META)).toEqual({ status: "ok", problemas: [] });
   });
 
+  it("com Hotmart ou Kiwify, falta de sck é erro; sem elas, não", () => {
+    const antigo = "utm_source=meta&utm_campaign_id={{campaign.id}}&utm_adset_id={{adset.id}}&utm_ad_id={{ad.id}}";
+    expect(avaliarParametros(antigo).status).toBe("ok");
+    expect(avaliarParametros(antigo, { checkout: true }).status).toBe("erro");
+    expect(avaliarParametros(PARAMETROS_META, { checkout: true }).status).toBe("ok");
+  });
+
   it("sem parâmetros é erro", () => {
     expect(avaliarParametros(null).status).toBe("erro");
     expect(avaliarParametros("  ").status).toBe("erro");
