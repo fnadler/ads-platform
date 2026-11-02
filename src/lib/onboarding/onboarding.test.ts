@@ -1,7 +1,7 @@
 // Assistente de configuração: quais telas cada negócio vê, o que falta e a conferência da página.
 import { describe, expect, it } from "vitest";
 import { SCRIPT_CHECKOUT } from "@/lib/vendas/plataformas/catalogo";
-import { configuracaoEmAndamento, funilSugerido, pendentes, permissoesDoToken, progresso, telaInicial, telas, type Fatos, type Onboarding } from "./modelo";
+import { funilSugerido, pendentes, permissoesDoToken, progresso, resumoEtapas, telaInicial, telas, type Fatos, type Onboarding } from "./modelo";
 import { analisarPagina, ipPrivado, pixelsNaPagina, temScriptCheckout, validarUrlPagina } from "./pagina";
 
 const hotmart: Onboarding = { plataforma: "hotmart", funil: "venda_direta", site: "eu", campanhas: "sim" };
@@ -91,10 +91,24 @@ describe("apoios do modelo", () => {
     expect(funilSugerido("stripe")).toBe("cadastro_teste_venda");
   });
 
-  it("convite para configurar: some para quem concluiu ou já está rodando", () => {
-    expect(configuracaoEmAndamento(fatos(), false)).toBe(true);
-    expect(configuracaoEmAndamento(fatos({ onboarding: { concluido_em: "2026-11-02" } }), false)).toBe(false);
-    expect(configuracaoEmAndamento(fatos({ temToken: true, contaAtiva: true }), true)).toBe(false);
+  it("o resumo da tela Início retoma cada etapa onde ela parou", () => {
+    const novo = resumoEtapas(fatos());
+    expect(novo.map((e) => e.feita)).toEqual([false, false, false, false, false]);
+    expect(novo.map((e) => e.nome)).not.toContain("Pronto");
+    const semToken = resumoEtapas(fatos({ onboarding: hotmart }));
+    expect(semToken[0].feita).toBe(true);
+    expect(semToken[1]).toMatchObject({ feita: false, tela: "meta-acesso", detalhe: "Falta: Token" });
+    expect(resumoEtapas(fatos({ onboarding: hotmart, temToken: true }))[1]).toMatchObject({ feita: false, tela: "meta-escolhas" });
+    const pronto = resumoEtapas({ ...tudoCerto({ ...hotmart, destino: "checkout" }), plataformaEmTeste: false });
+    expect(pronto.every((e) => e.feita)).toBe(true);
+    expect(pronto[1].tela).toBe("meta-acesso");
+    expect(pronto[3].alerta).toBeUndefined();
+  });
+
+  it("plataforma em teste é etapa feita, mas com alerta", () => {
+    const f = { ...tudoCerto({ ...hotmart, destino: "checkout" }), plataformaEmTeste: true };
+    expect(resumoEtapas(f)[3]).toMatchObject({ feita: true, alerta: expect.stringContaining("modo de teste") });
+    expect(resumoEtapas({ ...f, plataformaEmTeste: false })[3].alerta).toBeUndefined();
   });
 });
 

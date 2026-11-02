@@ -106,5 +106,42 @@ export const permissoesDoToken = (campanhas: boolean) => (campanhas ? ["ads_mana
 /** Plano sugerido a partir da plataforma: infoproduto costuma ir direto ao checkout. */
 export const funilSugerido = (plataforma?: string) => (plataforma === "stripe" ? "cadastro_teste_venda" : plataforma === "outra" ? "cadastro_venda" : "venda_direta");
 
-/** Quem já está rodando não precisa do convite para configurar. */
-export const configuracaoEmAndamento = (f: Fatos, temLeadsOuVendas: boolean) => !f.onboarding.concluido_em && !(f.temToken && f.contaAtiva && temLeadsOuVendas);
+export interface ResumoEtapa {
+  etapa: number;
+  nome: string;
+  feita: boolean;
+  detalhe: string;
+  /** Onde a pessoa retoma: a primeira tela que falta na etapa, ou o começo dela para rever. */
+  tela: IdTela;
+  /** Etapa concluída, mas com algo a resolver (a plataforma ainda não conta as vendas). */
+  alerta?: string;
+}
+
+const ROTULO_PLATAFORMA: Record<string, string> = { hotmart: "Hotmart", kiwify: "Kiwify", stripe: "Stripe", outra: "Webhook ou planilha" };
+
+/** As etapas para a tela Início (o resumo final não entra: ele é o fim do assistente). */
+export function resumoEtapas(f: Fatos): ResumoEtapa[] {
+  const lista = telas(f);
+  const o = f.onboarding;
+  const quandoFeita: Record<number, string> = {
+    1: `Venda em ${ROTULO_PLATAFORMA[String(o.plataforma)] ?? "—"}`,
+    2: "Token, conta e pixel conferidos",
+    3: usaCheckoutExterno(o) && o.destino === "checkout" ? "O anúncio leva direto ao checkout" : (o.pagina?.url ?? "Página conferida"),
+    4: `${ROTULO_PLATAFORMA[String(o.plataforma)] ?? "Fonte de venda"} conectada`,
+    5: "A origem do anúncio chegou até o sistema",
+  };
+  return ETAPAS.slice(0, 5).map((nome, n) => {
+    const etapa = n + 1;
+    const grupo = lista.filter((t) => t.etapa === etapa);
+    const falta = grupo.find((t) => !t.feito && !t.informativa);
+    const retomar: IdTela | undefined = falta?.id === "meta-token" ? "meta-acesso" : falta?.id;
+    return {
+      etapa,
+      nome,
+      feita: !falta,
+      detalhe: falta ? `Falta: ${falta.titulo}` : quandoFeita[etapa],
+      tela: retomar ?? grupo[0].id,
+      alerta: etapa === 4 && !falta && usaCheckoutExterno(o) && f.plataformaEmTeste ? "Em modo de teste: as vendas ainda não entram nos números" : undefined,
+    };
+  });
+}
