@@ -98,7 +98,7 @@ Em **Configurações → Meta**, cole o token de um **usuário do sistema** do p
 **Stripe:**
 1. Crie uma chave restrita com **leitura** em Faturas, Assinaturas, Clientes e Cobranças.
 2. Em **Configurações → Stripe**, cole a chave e informe o campo do metadata da assinatura que guarda o id do lead (no GN: `user_id`).
-3. No Stripe, crie um destino de webhook com o endereço que a tela mostra e os eventos `invoice.paid`, `customer.subscription.created` e `charge.refunded`.
+3. No Stripe, crie um destino de webhook com o endereço que a tela mostra e os eventos `invoice.paid`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted` e `charge.refunded`.
 4. Cole o segredo `whsec_…` na tela e clique em **Importar histórico** para trazer os últimos 365 dias.
 
 **CSV:** em **Leads e vendas → Importar CSV**, com as colunas `id_externo`, `tipo`, `data`, `valor`, `lead_id_externo`, `email` e `utm_*`.

@@ -27,11 +27,12 @@ interface Linha {
   leads_meta: number;
   leads: number;
   testes: number;
+  testes_cancelados: number;
   vendas: number;
   receita: number;
 }
 
-type Soma = Pick<Linha, "gasto" | "impressoes" | "cliques_link" | "visualizacoes_pagina" | "leads_meta" | "leads" | "testes" | "vendas" | "receita"> & { freqPeso: number };
+type Soma = Pick<Linha, "gasto" | "impressoes" | "cliques_link" | "visualizacoes_pagina" | "leads_meta" | "leads" | "testes" | "testes_cancelados" | "vendas" | "receita"> & { freqPeso: number };
 const zero = (): Soma => ({
   gasto: 0,
   impressoes: 0,
@@ -40,14 +41,26 @@ const zero = (): Soma => ({
   leads_meta: 0,
   leads: 0,
   testes: 0,
+  testes_cancelados: 0,
   vendas: 0,
   receita: 0,
   freqPeso: 0,
 });
 function somar(s: Soma, l: Linha) {
-  for (const k of ["gasto", "impressoes", "cliques_link", "visualizacoes_pagina", "leads_meta", "leads", "testes", "vendas", "receita"] as const) s[k] += Number(l[k]);
+  for (const k of ["gasto", "impressoes", "cliques_link", "visualizacoes_pagina", "leads_meta", "leads", "testes", "testes_cancelados", "vendas", "receita"] as const) s[k] += Number(l[k]);
   s.freqPeso += Number(l.frequencia) * Number(l.impressoes);
   return s;
+}
+
+const rotuloCancelados = (n: number) => `${inteiro(n)} ${n === 1 ? "cancelado" : "cancelados"}`;
+/** Célula de testes: os que iniciaram e, embaixo, quantos desistiram antes da cobrança. */
+function Testes({ total, cancelados }: { total: number; cancelados: number }) {
+  return (
+    <>
+      {inteiro(total)}
+      {cancelados > 0 && <div className="text-xs text-ink-3">{rotuloCancelados(cancelados)}</div>}
+    </>
+  );
 }
 
 const PERIODOS = [7, 14, 30, 90];
@@ -197,7 +210,11 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
             <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
             <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />
             <Indicador rotulo="Leads (sistema)" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio" />
-            <Indicador rotulo="Testes" valor={inteiro(total.testes)} detalhe={total.leads ? `${pct(razao(total.testes, total.leads), 0)} dos leads` : undefined} />
+            <Indicador
+              rotulo="Testes"
+              valor={inteiro(total.testes)}
+              detalhe={total.leads ? `${pct(razao(total.testes, total.leads), 0)} dos leads${total.testes_cancelados ? ` · ${rotuloCancelados(total.testes_cancelados)}` : ""}` : undefined}
+            />
             <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} de receita` : undefined} />
             <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="gasto ÷ vendas" destaque />
             <Indicador
@@ -210,7 +227,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
 
           <Aviso>
             <strong>Leads (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Leads (sistema)</strong> é o que chegou à sua fonte de venda com o anúncio de origem; é
-            sobre ele que calculamos testes, vendas e ROAS.
+            sobre ele que calculamos testes, vendas e ROAS. <strong>Testes</strong> conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece.
           </Aviso>
 
           <Cartao>
@@ -281,7 +298,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                         <td>{inteiro(c.soma.leads_meta)}</td>
                         <td>{moeda(razao(c.soma.gasto, c.soma.leads_meta), org.moeda)}</td>
                         <td>{inteiro(c.soma.leads)}</td>
-                        <td>{inteiro(c.soma.testes)}</td>
+                        <td><Testes total={c.soma.testes} cancelados={c.soma.testes_cancelados} /></td>
                         <td>{inteiro(c.soma.vendas)}</td>
                         <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
                         <td className={destaque}>{roas(c.soma.receita, c.soma.gasto)}</td>
@@ -297,7 +314,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                       <td>{inteiro(total.leads_meta)}</td>
                       <td>{moeda(razao(total.gasto, total.leads_meta), org.moeda)}</td>
                       <td>{inteiro(total.leads)}</td>
-                      <td>{inteiro(total.testes)}</td>
+                      <td><Testes total={total.testes} cancelados={total.testes_cancelados} /></td>
                       <td>{inteiro(total.vendas)}</td>
                       <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
                       <td className={destaque}>{roas(total.receita, total.gasto)}</td>
@@ -334,7 +351,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                             <td>{inteiro(cj.soma.leads_meta)}</td>
                             <td>{moeda(razao(cj.soma.gasto, cj.soma.leads_meta), org.moeda)}</td>
                             <td>{inteiro(cj.soma.leads)}</td>
-                            <td>{inteiro(cj.soma.testes)}</td>
+                            <td><Testes total={cj.soma.testes} cancelados={cj.soma.testes_cancelados} /></td>
                             <td>{inteiro(cj.soma.vendas)}</td>
                             <td className={destaque}>{moeda(razao(cj.soma.gasto, cj.soma.vendas), org.moeda)}</td>
                             <td className={destaque}>{roas(cj.soma.receita, cj.soma.gasto)}</td>
@@ -381,7 +398,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
                           <td>{inteiro(Number(l.leads_meta))}</td>
                           <td>{moeda(razao(Number(l.gasto), Number(l.leads_meta)), org.moeda)}</td>
                           <td>{inteiro(Number(l.leads))}</td>
-                          <td>{inteiro(Number(l.testes))}</td>
+                          <td><Testes total={Number(l.testes)} cancelados={Number(l.testes_cancelados)} /></td>
                           <td>{inteiro(Number(l.vendas))}</td>
                           <td className={destaque}>{moeda(razao(Number(l.gasto), Number(l.vendas)), org.moeda)}</td>
                           <td className={destaque}>{roas(Number(l.receita), Number(l.gasto))}</td>

@@ -13,7 +13,7 @@ export type TipoPublico = keyof typeof TIPOS_PUBLICO;
 
 export const SEGMENTOS = {
   pagantes: "Pagantes (já assinaram ou compraram)",
-  teste_sem_pagamento: "Iniciaram teste e ainda não pagaram",
+  teste_sem_pagamento: "Em teste: iniciaram, não pagaram e não cancelaram",
   cadastrados_sem_teste: "Cadastraram e não iniciaram teste nem pagaram",
   todos: "Todos os leads",
 } as const;

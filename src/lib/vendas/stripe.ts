@@ -6,6 +6,7 @@ import type { Evento } from "./ingestao";
 // Adaptador Stripe: transforma faturas, assinaturas e reembolsos em eventos da ingestão comum.
 // • Venda = fatura paga com valor (amount_paid > 0). A primeira paga da assinatura marca o pagante.
 // • Teste grátis = assinatura criada em "trialing".
+// • Teste cancelado = assinatura em teste marcada para cancelar, ou encerrada antes de pagar.
 // • Reembolso = charge.refunded (valor acumulado, negativo).
 // O lead vem do metadata da assinatura (campo configurável, ex.: user_id); sem ele, do metadata do
 // cliente; e a venda ainda casa pelo hash do e-mail da fatura.
@@ -64,6 +65,28 @@ export function testeDaAssinatura(assinatura: Stripe.Subscription, campo: string
   const lead = assinatura.metadata?.[campo];
   if (!lead || !assinatura.trial_start) return null;
   return { tipo: "teste_iniciado", id_externo: lead, ocorrido_em: iso(assinatura.trial_start) };
+}
+
+/** Situação do teste segundo uma assinatura. Depois do teste com a assinatura ativa, não há o que marcar. */
+export function situacaoDoTeste(assinatura: Stripe.Subscription, lead: string): Evento | null {
+  if (!assinatura.trial_start) return null;
+  const emTeste = assinatura.status === "trialing";
+  if (assinatura.status === "canceled" || (emTeste && (assinatura.cancel_at_period_end || assinatura.cancel_at != null))) {
+    return { tipo: "teste_cancelado", id_externo: lead, ocorrido_em: iso(assinatura.canceled_at ?? assinatura.ended_at) };
+  }
+  return emTeste ? { tipo: "teste_reativado", id_externo: lead } : null;
+}
+
+/**
+ * Cancelamento (ou reativação) do teste de uma assinatura. Decide pela assinatura mais recente do cliente: o
+ * Stripe não garante a ordem dos eventos, e quem cancelou pode ter começado outro teste depois.
+ */
+export async function cancelamentoDoTeste(stripe: Stripe, assinatura: Stripe.Subscription, campo: string): Promise<Evento | null> {
+  const lead = assinatura.metadata?.[campo];
+  if (!lead || !assinatura.trial_start || !["trialing", "canceled"].includes(assinatura.status)) return null;
+  const { data } = await stripe.subscriptions.list({ customer: idDe(assinatura.customer) ?? undefined, status: "all", limit: 10 });
+  const recente = [...data].sort((a, b) => b.created - a.created)[0] ?? assinatura;
+  return situacaoDoTeste(recente, lead);
 }
 
 /** Cobrança reembolsada → reembolso (negativo). O lead vem da venda anterior do mesmo cliente. */

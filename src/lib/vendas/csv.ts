@@ -58,6 +58,6 @@ export function linhaParaEvento(l: Record<string, string>) {
   const atribuicao = Object.fromEntries(UTM.filter((k) => l[k]).map((k) => [k, l[k]]));
   const base = { tipo, id_externo: l.id_externo, ocorrido_em: dataIso(l.ocorrido_em || l.data || "") };
   if (tipo === "lead") return { ...base, email: l.email || undefined, telefone: l.telefone || undefined, nome: l.nome || undefined, atribuicao };
-  if (tipo === "teste_iniciado") return base;
+  if (tipo.startsWith("teste_")) return base;
   return { ...base, valor: valorNumerico(l.valor ?? ""), moeda: l.moeda || undefined, lead_id_externo: l.lead_id_externo || undefined, email: l.email || undefined, atribuicao };
 }

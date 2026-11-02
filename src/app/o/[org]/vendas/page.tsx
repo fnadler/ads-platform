@@ -23,7 +23,7 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
     supabase.rpc("cobertura_atribuicao", { p_org: org.id, p_de: hojeMenos(29, org.fuso), p_ate: hojeMenos(0, org.fuso) }).single<Record<string, number>>(),
     supabase
       .from("leads")
-      .select("id_externo, criado_em, utm_source, utm_campaign, utm_content, ad_id, atribuicao, teste_iniciado_em, primeiro_pagamento_em, codigo_teste")
+      .select("id_externo, criado_em, utm_source, utm_campaign, utm_content, ad_id, atribuicao, teste_iniciado_em, teste_cancelado_em, primeiro_pagamento_em, codigo_teste")
       .eq("organizacao_id", org.id)
       .order("criado_em", { ascending: false })
       .limit(50),
@@ -103,7 +103,7 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
                       <Etiqueta tom={ATRIBUICAO[l.atribuicao].tom}>{ATRIBUICAO[l.atribuicao].rotulo}</Etiqueta>
                       {l.ad_id && <div className="mt-1 text-ink-2">{nomeAnuncio.get(l.ad_id) ?? l.ad_id}</div>}
                     </td>
-                    <td>{l.teste_iniciado_em ? "sim" : ""}</td>
+                    <td>{l.teste_cancelado_em && !l.primeiro_pagamento_em ? <Etiqueta tom="alerta">cancelado</Etiqueta> : l.teste_iniciado_em ? "sim" : ""}</td>
                     <td>{l.primeiro_pagamento_em ? "sim" : ""}</td>
                   </tr>
                 ))}
@@ -146,7 +146,7 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
         </Cartao>
 
         {temPapel(papel, "gestor") && (
-          <Cartao titulo="Importar CSV" descricao="Para vendas que não chegam por webhook. Colunas: id_externo (obrigatória), tipo (lead, venda, reembolso, teste_iniciado), data, valor, lead_id_externo, email e utm_* (inclusive utm_ad_id).">
+          <Cartao titulo="Importar CSV" descricao="Para vendas que não chegam por webhook. Colunas: id_externo (obrigatória), tipo (lead, venda, reembolso, teste_iniciado, teste_cancelado, teste_reativado), data, valor, lead_id_externo, email e utm_* (inclusive utm_ad_id).">
             <Formulario acao={importarCsv} rotulo="Importar">
               <input type="hidden" name="organizacao_id" value={org.id} />
               <input type="file" name="arquivo" accept=".csv,text/csv" required className="text-sm" />

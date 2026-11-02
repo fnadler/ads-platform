@@ -4,10 +4,10 @@ import { lerSegredo, type SegredoStripe } from "@/lib/conexoes/segredos";
 import { clienteStripe } from "@/lib/integracoes/stripe";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { processarEvento, type Evento } from "@/lib/vendas/ingestao";
-import { reembolsoDaCobranca, testeDaAssinatura, vendaDaFatura } from "@/lib/vendas/stripe";
+import { cancelamentoDoTeste, reembolsoDaCobranca, testeDaAssinatura, vendaDaFatura } from "@/lib/vendas/stripe";
 
 // Webhook do Stripe de uma organização (um endpoint por conexão: /api/webhook/stripe/<id da conexão>).
-// Eventos: invoice.paid, customer.subscription.created e charge.refunded. A assinatura é conferida com o
+// Eventos: invoice.paid, customer.subscription.created/updated/deleted e charge.refunded. A assinatura é conferida com o
 // segredo whsec_ da conexão. Erro ao gravar → 500 e o Stripe tenta de novo (a ingestão é idempotente).
 export async function POST(request: Request, ctx: RouteContext<"/api/webhook/stripe/[conexao]">) {
   const { conexao: conexaoId } = await ctx.params;
@@ -31,6 +31,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/webhook/str
     let e: Evento | null = null;
     if (evento.type === "invoice.paid") e = await vendaDaFatura(stripe, evento.data.object, campo);
     else if (evento.type === "customer.subscription.created") e = testeDaAssinatura(evento.data.object, campo);
+    else if (evento.type === "customer.subscription.updated" || evento.type === "customer.subscription.deleted") e = await cancelamentoDoTeste(stripe, evento.data.object, campo);
     else if (evento.type === "charge.refunded") e = await reembolsoDaCobranca(admin, conexao.organizacao_id, evento.data.object);
     if (e) await processarEvento({ admin, organizacaoId: conexao.organizacao_id, conexaoId: conexao.id, origem: "stripe" }, e);
   } catch (err) {

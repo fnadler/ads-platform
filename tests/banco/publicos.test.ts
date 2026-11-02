@@ -39,6 +39,14 @@ describe("segmentos do funil", () => {
     expect(await segmento("todos")).toEqual(["h-cad", "h-pagou", "h-teste", "h-velho"]);
   });
 
+  it("quem cancelou o teste sai de teste_sem_pagamento, mas continua em todos", async () => {
+    await db.query("update public.leads set teste_cancelado_em = now() where id_externo = 'testando'");
+    expect(await segmento("teste_sem_pagamento")).toEqual([]);
+    expect(await segmento("cadastrados_sem_teste")).not.toContain("h-teste");
+    expect(await segmento("todos")).toContain("h-teste");
+    await db.query("update public.leads set teste_cancelado_em = null where id_externo = 'testando'");
+  });
+
   it("quem se opôs sai de todas as listas", async () => {
     await db.query("update public.leads set fora_de_publicos_em = now() where id_externo = 'cadastro'");
     expect(await segmento("cadastrados_sem_teste")).toEqual(["h-velho"]);

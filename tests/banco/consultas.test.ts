@@ -50,6 +50,15 @@ beforeAll(async () => {
 });
 
 describe("desempenho_anuncios", () => {
+  it("separa os testes cancelados, sem contar quem pagou", async () => {
+    const soma = async () => (await como(db, dono, () => db.query<Record<string, string | number>>("select * from public.desempenho_anuncios($1, '2026-11-03', '2026-11-04')", [org]))).rows.find((x) => x.ad_id === "111111")!;
+    await db.query("update public.leads set teste_iniciado_em = now(), teste_cancelado_em = now() where id_externo = 'u2'");
+    expect(await soma()).toMatchObject({ testes: 2, testes_cancelados: 1 });
+    await db.query("update public.leads set primeiro_pagamento_em = now() where id_externo = 'u2'");
+    expect(await soma()).toMatchObject({ testes: 2, testes_cancelados: 0 });
+    await db.query("update public.leads set teste_iniciado_em = null, teste_cancelado_em = null, primeiro_pagamento_em = null where id_externo = 'u2'");
+  });
+
   it("cruza mídia, leads (pelo fuso) e vendas por anúncio", async () => {
     const r = await como(db, dono, () => db.query<Record<string, string | number>>("select * from public.desempenho_anuncios($1, '2026-11-03', '2026-11-04') order by ad_id", [org]));
     const a = r.rows.find((x) => x.ad_id === "111111")!;
@@ -59,6 +68,7 @@ describe("desempenho_anuncios", () => {
     expect(Number(a.leads_meta)).toBe(12);
     expect(Number(a.leads)).toBe(3); // o das 23h de 04/11 em Brasília entra
     expect(Number(a.testes)).toBe(1);
+    expect(Number(a.testes_cancelados)).toBe(0);
     expect(Number(a.vendas)).toBe(1);
     expect(Number(a.receita)).toBe(20); // 21,50 − 1,50 de reembolso
     expect(r.rows.find((x) => x.ad_id === "222222")).toMatchObject({ leads: 0 });

@@ -150,7 +150,7 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
               <span className="font-medium">Endereço do webhook (cole no Stripe):</span>
               <Copiavel valor={`${base}/api/webhook/stripe/${stripe.id}`} />
               <span className="text-xs text-ink-2">
-                Eventos: <code>invoice.paid</code>, <code>customer.subscription.created</code>, <code>charge.refunded</code>. Campo do lead no metadata da assinatura:{" "}
+                Eventos: <code>invoice.paid</code>, <code>customer.subscription.created</code>, <code>customer.subscription.updated</code>, <code>customer.subscription.deleted</code>, <code>charge.refunded</code>. Campo do lead no metadata da assinatura:{" "}
                 <code>{stripe.config.campo_lead}</code>
                 {stripe.config.modo && ` · chave de ${stripe.config.modo}`}
               </span>
@@ -215,6 +215,8 @@ Content-Type: application/json
   "primeiro_toque": { "utm_campaign_id": "…", "utm_ad_id": "…" } }
 
 { "tipo": "teste_iniciado", "id_externo": "id-do-cliente" }
+{ "tipo": "teste_cancelado", "id_externo": "id-do-cliente" }
+{ "tipo": "teste_reativado", "id_externo": "id-do-cliente" }
 { "tipo": "venda", "id_externo": "pedido-123", "valor": 21.5, "lead_id_externo": "id-do-cliente" }
 { "tipo": "reembolso", "id_externo": "pedido-123", "valor": 21.5, "lead_id_externo": "id-do-cliente" }
 

@@ -46,6 +46,14 @@ const EventoTeste = z.object({
   ocorrido_em: quando,
 });
 
+// Cancelar o teste antes da cobrança (e desfazer o cancelamento).
+const EventoCancelado = z.object({
+  tipo: z.literal("teste_cancelado"),
+  id_externo: z.string().trim().min(1).max(200), // do lead
+  ocorrido_em: quando,
+});
+const EventoReativado = EventoCancelado.extend({ tipo: z.literal("teste_reativado") });
+
 const EventoVenda = z.object({
   tipo: z.enum(["venda", "reembolso"]),
   id_externo: z.string().trim().min(1).max(200), // da venda/pedido
@@ -59,7 +67,7 @@ const EventoVenda = z.object({
   atribuicao: Atribuicao.optional(),
 });
 
-export const Evento = z.discriminatedUnion("tipo", [EventoLead, EventoTeste, EventoVenda]);
+export const Evento = z.discriminatedUnion("tipo", [EventoLead, EventoTeste, EventoCancelado, EventoReativado, EventoVenda]);
 export type Evento = z.infer<typeof Evento>;
 export const CorpoWebhook = z.union([z.object({ eventos: z.array(z.unknown()).min(1).max(500) }), z.record(z.string(), z.unknown())]);
 
@@ -187,6 +195,20 @@ async function aplicarEvento(ctx: Contexto, e: Evento): Promise<void> {
     const { data: lead } = await ctx.admin.from("leads").select("id, teste_iniciado_em").eq("organizacao_id", ctx.organizacaoId).eq("id_externo", e.id_externo).maybeSingle();
     if (lead?.teste_iniciado_em) return; // vale o primeiro
     await upsertLead(ctx, { id_externo: e.id_externo, teste_iniciado_em: em(e.ocorrido_em), ...(lead ? {} : { criado_em: em(e.ocorrido_em) }) });
+    await registrarEvento(ctx, chaveDe(e), e);
+    return;
+  }
+
+  if (e.tipo === "teste_cancelado" || e.tipo === "teste_reativado") {
+    const { data: lead } = await ctx.admin.from("leads").select("id, teste_cancelado_em, primeiro_pagamento_em").eq("organizacao_id", ctx.organizacaoId).eq("id_externo", e.id_externo).maybeSingle();
+    if (e.tipo === "teste_reativado") {
+      if (!lead?.teste_cancelado_em) return;
+      await upsertLead(ctx, { id_externo: e.id_externo, teste_cancelado_em: null });
+    } else {
+      // Quem já pagou e cancela depois é churn, não desistência do teste; e vale a data do primeiro cancelamento.
+      if (lead?.primeiro_pagamento_em || lead?.teste_cancelado_em) return;
+      await upsertLead(ctx, { id_externo: e.id_externo, teste_cancelado_em: em(e.ocorrido_em), ...(lead ? {} : { criado_em: em(e.ocorrido_em) }) });
+    }
     await registrarEvento(ctx, chaveDe(e), e);
     return;
   }

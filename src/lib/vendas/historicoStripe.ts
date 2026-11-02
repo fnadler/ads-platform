@@ -4,7 +4,7 @@ import { lerSegredo, type SegredoStripe } from "@/lib/conexoes/segredos";
 import { clienteStripe } from "@/lib/integracoes/stripe";
 import type { ResultadoJob, Sincronizacao } from "@/lib/jobs/tipos";
 import { processarEvento } from "./ingestao";
-import { testeDaAssinatura, vendaDaFatura } from "./stripe";
+import { cancelamentoDoTeste, testeDaAssinatura, vendaDaFatura } from "./stripe";
 
 // Importação do histórico do Stripe (job da fila): faturas pagas e assinaturas com teste grátis dos
 // últimos 365 dias, página a página (100), com o cursor do Stripe gravado entre as fatias.
@@ -49,6 +49,8 @@ export async function executarHistoricoStripe(admin: SupabaseClient, s: Sincroni
         if (e) {
           await processarEvento(ctx, e);
           linhas++;
+          const cancelamento = await cancelamentoDoTeste(stripe, a, campo);
+          if (cancelamento) await processarEvento(ctx, cancelamento);
         }
       }
       depois = pagina.data.at(-1)?.id;
