@@ -150,7 +150,7 @@ export async function CartaoPublicacao({ orgId, dono, supabase, fuso }: { orgId:
           {dono && config.aceite_publicos_clientes_em && (
             <details className="mt-4">
               <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">Retirar um e-mail dos públicos (pedido de oposição)</summary>
-              <Formulario acao={retirarDosPublicos} rotulo="Retirar das listas" variante="secundario" className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <Formulario acao={retirarDosPublicos} rotulo="Retirar das listas" variante="secundario" className="mt-2 flex flex-col gap-4">
                 {hidden}
                 <Campo rotulo="E-mail da pessoa" name="email" type="email" required ajuda="O e-mail não é guardado: o sistema compara o hash." />
               </Formulario>

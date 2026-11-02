@@ -27,9 +27,11 @@ export default async function Admin() {
       </Titulo>
       <div className="grid gap-6">
         <Cartao titulo="Nova organização">
-          <Formulario acao={criarOrganizacao} rotulo="Criar organização" variante="peso" className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-            <Campo rotulo="Nome" name="nome" placeholder="GN Coleciona" required />
-            <Campo rotulo="Endereço" name="slug" placeholder="gn-coleciona" pattern="[a-z0-9][a-z0-9\-]{1,39}" required ajuda="Aparece na URL: /o/gn-coleciona" />
+          <Formulario acao={criarOrganizacao} rotulo="Criar organização" variante="peso" className="flex flex-col gap-4">
+            <div className="grid items-start gap-4 sm:grid-cols-2">
+              <Campo rotulo="Nome" name="nome" placeholder="GN Coleciona" required />
+              <Campo rotulo="Endereço" name="slug" placeholder="gn-coleciona" pattern="[a-z0-9][a-z0-9\-]{1,39}" required ajuda="Aparece na URL: /o/gn-coleciona" />
+            </div>
           </Formulario>
         </Cartao>
         <Cartao titulo="Organizações" rente>

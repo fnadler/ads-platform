@@ -78,16 +78,18 @@ export default async function Membros({ params }: PageProps<"/o/[org]/configurac
 
         {ehDono && (
           <Cartao titulo="Convidar" descricao="O sistema gera um link (vale 7 dias) para você mandar à pessoa. Ela cria a senha ao abrir.">
-            <Formulario acao={convidar} rotulo="Gerar convite" className="grid gap-3 sm:grid-cols-[1fr_200px] sm:items-end">
+            <Formulario acao={convidar} rotulo="Gerar convite" className="flex flex-col gap-4">
               <input type="hidden" name="organizacao_id" value={org.id} />
-              <Campo rotulo="E-mail" name="email" type="email" required />
-              <Selecao rotulo="Papel" name="papel" defaultValue="gestor">
-                {(["dono", "gestor", "leitura"] as const).map((p) => (
-                  <option key={p} value={p}>
-                    {ROTULO_PAPEL[p]}: {DESCRICAO_PAPEL[p]}
-                  </option>
-                ))}
-              </Selecao>
+              <div className="grid items-start gap-4 sm:grid-cols-[1fr_200px]">
+                <Campo rotulo="E-mail" name="email" type="email" required />
+                <Selecao rotulo="Papel" name="papel" defaultValue="gestor">
+                  {(["dono", "gestor", "leitura"] as const).map((p) => (
+                    <option key={p} value={p}>
+                      {ROTULO_PAPEL[p]}: {DESCRICAO_PAPEL[p]}
+                    </option>
+                  ))}
+                </Selecao>
+              </div>
             </Formulario>
             {!!convites?.length && (
               <div className="mt-6">

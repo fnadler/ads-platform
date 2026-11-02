@@ -37,7 +37,7 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
         )}
         {temPapel(papel, "gestor") && (
           <Cartao titulo="Nova campanha" descricao="Modelo: Cadastro no site. O sistema fixa objetivo, destino, otimização, atribuição e Parâmetros de URL; você escolhe verba, datas, público e criativos.">
-            <Formulario acao={criarRascunho} rotulo="Nova campanha" variante="peso" className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <Formulario acao={criarRascunho} rotulo="Nova campanha" variante="peso" className="flex flex-col gap-4">
               <input type="hidden" name="organizacao_id" value={org.id} />
               <input type="hidden" name="slug" value={slug} />
               <Campo rotulo="Nome da campanha" name="nome" placeholder="Ex.: Cadastro Loja | Ganchos A1 | Nov26" required />
