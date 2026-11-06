@@ -8,6 +8,7 @@ import { dataHora, decimal } from "@/lib/formato";
 import { rotaOrg } from "@/lib/rotas";
 import { urlSistema } from "@/lib/url";
 import { FUNIS, TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
+import { CartaoClarity } from "./CartaoClarity";
 import { CartaoPlataforma, type ConexaoPlataforma, type EventoPlataforma } from "./CartaoPlataforma";
 import { CartaoPublicacao } from "./CartaoPublicacao";
 import { CartaoStripe, CartaoWebhook } from "./CartoesFonte";
@@ -66,7 +67,7 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
     <>
       <Titulo
         sobrancelha="Configurações"
-        descricao="Conexões com a Meta e com a fonte de venda, e o que conta como lead e compra."
+        descricao="Conexões com a Meta, com a fonte de venda e com o Clarity, e o que conta como lead e compra."
         acoes={
           <div className="flex flex-wrap gap-2">
             <BotaoLink variante="secundario" href={rotaOrg(slug, "/configurar")}>
@@ -201,6 +202,8 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
         ))}
 
         <CartaoWebhook webhook={webhook} base={base} orgId={org.id} dono={dono} />
+
+        <CartaoClarity orgId={org.id} dono={dono} gestor={gestor} fuso={org.fuso} supabase={supabase} />
 
         <Cartao
           titulo="O que conta como lead e compra na Meta"

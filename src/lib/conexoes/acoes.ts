@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Resultado } from "@/components/Formulario";
 import { acessoOrganizacao } from "@/lib/auth/sessao";
 import { novoToken, sha256 } from "@/lib/cifra";
+import { gravarColetaClarity, type SegredoClarity } from "@/lib/clarity/coleta";
+import { buscarInsightsClarity, normalizarProjetoClarity } from "@/lib/integracoes/clarity";
 import { normalizarContaMeta, validarTokenMeta } from "@/lib/integracoes/meta";
 import { validarChaveStripe } from "@/lib/integracoes/stripe";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
@@ -17,7 +19,7 @@ import { lerSegredo, salvarSegredo, type SegredoStripe } from "./segredos";
 
 const mensagem = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-async function gravarConexao(orgId: string, usuarioId: string, tipo: "meta" | "stripe" | "webhook" | TipoPlataforma, nome: string, campos: Record<string, unknown>) {
+async function gravarConexao(orgId: string, usuarioId: string, tipo: "meta" | "stripe" | "webhook" | "clarity" | TipoPlataforma, nome: string, campos: Record<string, unknown>) {
   const admin = criarClienteAdmin();
   const { data, error } = await admin
     .from("conexoes")
@@ -197,6 +199,62 @@ export async function importarHistoricoStripe(_: Resultado, dados: FormData): Pr
     if (error) return { erro: error.message };
     refresh();
     return { mensagem: "Importação na fila. Acompanhe em Sincronizações." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+// ───────────────────────────── Microsoft Clarity ─────────────────────────────
+
+/**
+ * ID do projeto + token da Data Export API. Token novo é validado com uma consulta (uma das 10 do dia),
+ * e a resposta já fica guardada como a primeira coleta. Sem token novo, só troca o ID do projeto.
+ */
+export async function conectarClarity(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const projeto = normalizarProjetoClarity(String(dados.get("projeto") ?? ""));
+  const token = String(dados.get("token") ?? "").trim();
+  if (!projeto) return { erro: "Informe o ID do projeto do Clarity (o código de 10 caracteres no fim do script, ex.: z9fvwq0b1n)." };
+  if (token && token.length < 20) return { erro: "Cole o token completo gerado em Settings → Data Export." };
+  try {
+    const { usuario, supabase } = await acessoOrganizacao(orgId, "dono");
+    const admin = criarClienteAdmin();
+    const { data: atual } = await admin.from("conexoes").select("id").eq("organizacao_id", orgId).eq("tipo", "clarity").eq("nome", "Clarity").maybeSingle();
+    const anterior = atual ? await lerSegredo<SegredoClarity>(admin, orgId, atual.id) : null;
+    if (!token && !anterior?.token) return { erro: "Cole o token do Clarity." };
+
+    const resposta = token ? await buscarInsightsClarity(token, 1) : null;
+    const { conexao } = await gravarConexao(orgId, usuario.id, "clarity", "Clarity", {
+      status: "ativa",
+      ultimo_erro: null,
+      ...(token ? { validado_em: new Date().toISOString() } : {}),
+      config: { projeto_id: projeto },
+    });
+    if (token) await salvarSegredo(admin, conexao, { token } satisfies SegredoClarity);
+    if (resposta) await gravarColetaClarity(admin, { organizacao_id: orgId, conexao_id: conexao.id, projeto_id: projeto, dia: null, dimensoes: [] }, resposta);
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "conexao.clarity", p_detalhes: { projeto_id: projeto, token_novo: !!token } });
+    refresh();
+    return {
+      mensagem: token
+        ? "Clarity conectado. A coleta automática roda toda madrugada e guarda o dia anterior."
+        : "ID do projeto atualizado.",
+    };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+/** Coleta avulsa das últimas 24 h (3 consultas das 10 do dia). Não fecha um dia: a diária continua. */
+export async function coletarClarityAgora(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  try {
+    const { supabase } = await acessoOrganizacao(orgId, "gestor");
+    const { data: conexao } = await supabase.from("conexoes").select("id").eq("organizacao_id", orgId).eq("tipo", "clarity").maybeSingle();
+    if (!conexao) return { erro: "Conecte o Clarity primeiro." };
+    const { error } = await supabase.rpc("enfileirar_sincronizacao", { p_org: orgId, p_tipo: "clarity", p_alvo: conexao.id, p_modo: "manual" });
+    if (error) return { erro: error.message };
+    refresh();
+    return { mensagem: "Coleta na fila. Acompanhe em Sincronizações." };
   } catch (e) {
     return { erro: mensagem(e) };
   }

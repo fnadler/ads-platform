@@ -1,7 +1,7 @@
 export interface Sincronizacao {
   id: string;
   organizacao_id: string;
-  tipo: "meta" | "stripe_historico" | "meta_publicacao" | "meta_publico";
+  tipo: "meta" | "stripe_historico" | "meta_publicacao" | "meta_publico" | "clarity";
   alvo: string;
   modo: "carga" | "incremental" | "manual";
   status: string;

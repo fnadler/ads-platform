@@ -1,5 +1,7 @@
 import "server-only";
+import { executarColetaClarity } from "@/lib/clarity/coleta";
 import { marcarErroConexao } from "@/lib/conexoes/segredos";
+import { ErroClarity } from "@/lib/integracoes/clarity";
 import { ErroLimiteMeta, ErroMeta } from "@/lib/integracoes/meta";
 import { executarSincronizacaoMeta } from "@/lib/meta/sincronizacao";
 import { executarPublicacao } from "@/lib/publicacao/job";
@@ -48,11 +50,18 @@ export async function processarFila(prazoMs: number) {
 
     let resultado: string;
     try {
-      const executar = { meta: executarSincronizacaoMeta, stripe_historico: executarHistoricoStripe, meta_publicacao: executarPublicacao, meta_publico: executarPublico }[s.tipo];
+      const executar = {
+        meta: executarSincronizacaoMeta,
+        stripe_historico: executarHistoricoStripe,
+        meta_publicacao: executarPublicacao,
+        meta_publico: executarPublico,
+        clarity: executarColetaClarity,
+      }[s.tipo];
       const r: ResultadoJob = await executar(admin, s, temTempo);
       if (r.status === "pronto") {
         await admin.from("sincronizacoes").update({ status: "ok", linhas: r.linhas, tentativas: 0, terminado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         if (s.tipo === "meta") await marcarConexaoMetaOk(s.organizacao_id);
+        if (s.tipo === "clarity") await marcarConexaoOk(s.alvo);
         resultado = "ok";
       } else {
         await admin.from("sincronizacoes").update({ status: "na_fila", cursor: r.cursor, linhas: r.linhas, tentativas: 0, atualizado_em: new Date().toISOString() }).eq("id", s.id);
@@ -68,7 +77,9 @@ export async function processarFila(prazoMs: number) {
         s.tentativas + 1 < MAX_TENTATIVAS &&
         !(e instanceof ErroMeta && [190, 200, 10].includes(e.codigo ?? 0)) &&
         // Publicação: erro da Meta (campo recusado, política) não melhora repetindo — vai direto para a tela.
-        !((s.tipo === "meta_publicacao" || s.tipo === "meta_publico") && e instanceof ErroMeta)
+        !((s.tipo === "meta_publicacao" || s.tipo === "meta_publico") && e instanceof ErroMeta) &&
+        // Clarity: token, parâmetro ou cota do dia — repetir só gasta as 10 consultas diárias.
+        !(e instanceof ErroClarity && e.definitivo)
       ) {
         await admin.from("sincronizacoes").update({ status: "na_fila", erro: mensagem(e), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: 120 * (s.tentativas + 1) });
@@ -76,6 +87,7 @@ export async function processarFila(prazoMs: number) {
       } else {
         await admin.from("sincronizacoes").update({ status: "erro", erro: mensagem(e), terminado_em: new Date().toISOString(), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         if (s.tipo === "meta" && e instanceof ErroMeta) await marcarConexaoMetaErro(s.organizacao_id, mensagem(e));
+        if (s.tipo === "clarity" && e instanceof ErroClarity && e.deCredencial) await marcarErroConexao(admin, s.alvo, mensagem(e));
         resultado = "erro";
       }
       console.error("[worker]", s.organizacao_id, s.tipo, s.alvo, mensagem(e));
@@ -88,6 +100,10 @@ export async function processarFila(prazoMs: number) {
   async function marcarConexaoMetaOk(org: string) {
     const { data } = await admin.from("conexoes").select("id, status").eq("organizacao_id", org).eq("tipo", "meta").maybeSingle();
     if (data?.status === "erro") await marcarErroConexao(admin, data.id, null);
+  }
+  async function marcarConexaoOk(conexaoId: string) {
+    const { data } = await admin.from("conexoes").select("status").eq("id", conexaoId).maybeSingle();
+    if (data?.status === "erro") await marcarErroConexao(admin, conexaoId, null);
   }
   async function marcarConexaoMetaErro(org: string, erro: string) {
     const { data } = await admin.from("conexoes").select("id").eq("organizacao_id", org).eq("tipo", "meta").maybeSingle();

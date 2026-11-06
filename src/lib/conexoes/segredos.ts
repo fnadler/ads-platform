@@ -26,7 +26,7 @@ export async function lerSegredo<T>(admin: SupabaseClient, organizacaoId: string
 }
 
 /** Conexão ativa de um tipo (a primeira) com a credencial. */
-export async function conexaoComSegredo<T>(admin: SupabaseClient, organizacaoId: string, tipo: "meta" | "stripe") {
+export async function conexaoComSegredo<T>(admin: SupabaseClient, organizacaoId: string, tipo: "meta" | "stripe" | "clarity") {
   const { data: conexao } = await admin
     .from("conexoes")
     .select("id, organizacao_id, status, config")
