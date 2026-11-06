@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeVoltar } from "@/components/Icones";
+import { LeituraCampanha } from "@/components/LeituraCampanha";
 import { Aviso, Cartao, corAnuncio, Indicador, Indicadores, MiniaturaCriativo, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { carregarLeitura } from "@/lib/leitura/carregar";
 import { rotaOrg } from "@/lib/rotas";
 
 export const metadata: Metadata = { title: "Desempenho" };
@@ -123,7 +125,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
   const de = dia(dias - 1, org.fuso);
   const ate = dia(0, org.fuso);
 
-  const [{ data: dados, error }, { data: serie }] = await Promise.all([
+  const [{ data: dados, error }, { data: serie }, leitura] = await Promise.all([
     supabase.rpc("desempenho_anuncios", {
       p_org: org.id,
       p_de: de,
@@ -135,6 +137,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
       p_ate: ate,
       p_campanha: campanha,
     }),
+    campanha ? carregarLeitura(supabase, org, campanha) : null,
   ]);
   if (error) return <Aviso tom="erro">Não foi possível carregar: {error.message}</Aviso>;
   const linhas = ((dados as Linha[]) ?? []).filter((l) => !campanha || l.campaign_id === campanha);
@@ -282,6 +285,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         <Vazio titulo="Sem dados no período">Confira em Sincronizações se a Meta já foi carregada, ou escolha um período maior.</Vazio>
       ) : (
         <div className="grid gap-5">
+          {leitura && <LeituraCampanha leitura={leitura} />}
           <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
             <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
             {direta ? (
@@ -331,6 +335,9 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
 
               <Cartao>
                 <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Leads (Meta)" : "Leads (sistema)"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
+                {atuais.at(-1)?.dia === ate && (
+                  <p className="mt-2 text-xs text-ink-3">O último ponto é hoje, ainda em andamento: a curva achata até o dia terminar e a Meta ser lida de novo.</p>
+                )}
                 <details className="mt-3 text-sm">
                   <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">
                     Ver em tabela

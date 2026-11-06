@@ -316,11 +316,16 @@ export async function salvarFunil(_: Resultado, dados: FormData): Promise<Result
   const orgId = String(dados.get("organizacao_id"));
   const funil = String(dados.get("funil"));
   if (!(funil in FUNIS)) return { erro: "Escolha um funil." };
+  const diasTeste = dados.has("dias_teste") ? Number(dados.get("dias_teste")) : null;
+  if (diasTeste !== null && !(Number.isInteger(diasTeste) && diasTeste >= 1 && diasTeste <= 90)) return { erro: "Informe a duração do teste grátis em dias (1 a 90)." };
   try {
     const { supabase } = await acessoOrganizacao(orgId, "gestor");
-    const { error } = await criarClienteAdmin().from("organizacoes").update({ funil }).eq("id", orgId);
+    const { error } = await criarClienteAdmin()
+      .from("organizacoes")
+      .update({ funil, ...(diasTeste !== null ? { dias_teste: diasTeste } : {}) })
+      .eq("id", orgId);
     if (error) return { erro: error.message };
-    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "organizacao.funil", p_detalhes: { funil } });
+    await supabase.rpc("registrar_auditoria", { p_org: orgId, p_acao: "organizacao.funil", p_detalhes: { funil, dias_teste: diasTeste } });
     refresh();
     return { mensagem: "Funil salvo." };
   } catch (e) {

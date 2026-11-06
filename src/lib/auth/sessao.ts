@@ -24,6 +24,7 @@ export interface Organizacao {
   fuso: string;
   moeda: string;
   funil: Funil;
+  dias_teste: number;
   onboarding: Onboarding;
 }
 
@@ -49,7 +50,7 @@ export const ehAdminPlataforma = cache(async () => {
 export const exigirOrganizacao = cache(async (slug: string, minimo: Papel = "leitura") => {
   const usuario = await exigirUsuario();
   const supabase = await criarClienteServidor();
-  const { data: org } = await supabase.from("organizacoes").select("id, nome, slug, fuso, moeda, funil, onboarding").eq("slug", slug).maybeSingle<Organizacao>();
+  const { data: org } = await supabase.from("organizacoes").select("id, nome, slug, fuso, moeda, funil, dias_teste, onboarding").eq("slug", slug).maybeSingle<Organizacao>();
   if (!org) notFound();
   const { data: papel } = await supabase.rpc("papel_na_org", { p_org: org.id });
   if (!temPapel(papel as Papel | null, minimo)) notFound();

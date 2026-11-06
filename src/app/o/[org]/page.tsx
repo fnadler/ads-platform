@@ -1,7 +1,9 @@
 import { IconeCheck, IconeSeta } from "@/components/Icones";
-import { Aviso, BotaoLink, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
+import { ItemAchado } from "@/components/LeituraCampanha";
+import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { dataHora, inteiro } from "@/lib/formato";
+import { campanhasAtivas, carregarLeitura } from "@/lib/leitura/carregar";
 import { lerFatos } from "@/lib/onboarding/fatos";
 import { resumoEtapas, telaInicial, telas } from "@/lib/onboarding/modelo";
 import { avaliarParametros } from "@/lib/rastreio/regras";
@@ -38,6 +40,12 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
   const link = (tela: string) => rotaOrg(slug, `/configurar?tela=${tela}`);
   const checkout = conexoes?.some((c) => (TIPOS_PLATAFORMA as string[]).includes(c.tipo)) ?? false;
   const semRastreio = (anuncios ?? []).filter((a) => avaliarParametros(a.url_tags, { checkout }).status === "erro").length;
+  // O que pede atenção nas campanhas no ar: os achados "agir" e "observar" da leitura de cada uma.
+  const ativas = await campanhasAtivas(supabase, org);
+  const leituras = await Promise.all(ativas.map(async (c) => ({ ...c, leitura: await carregarLeitura(supabase, org, c.id) })));
+  const atencao = leituras
+    .map((c) => ({ ...c, achados: c.leitura.achados.filter((a) => a.tom === "agir" || a.tom === "observar") }))
+    .filter((c) => c.achados.length);
 
   return (
     <>
@@ -70,6 +78,25 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             <a href={rotaOrg(slug, "/rastreio")}>Rastreio</a>.
           </Aviso>
         )}
+        {atencao.map((c) => (
+          <Cartao
+            key={c.id}
+            titulo={`O que pede atenção · ${c.nome}`}
+            descricao={c.leitura.nota ?? undefined}
+            acoes={
+              <BotaoLink variante="secundario" href={rotaOrg(slug, `/desempenho?campanha=${c.id}`)}>
+                Leitura completa
+                <IconeSeta tamanho={16} />
+              </BotaoLink>
+            }
+          >
+            <ul className="flex flex-col">
+              {c.achados.map((a) => (
+                <ItemAchado key={a.id} achado={a} />
+              ))}
+            </ul>
+          </Cartao>
+        ))}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
             {etapas.map((e) => {

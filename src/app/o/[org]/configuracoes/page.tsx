@@ -96,6 +96,17 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
                 ))}
               </Selecao>
               <p className="text-xs text-ink-2">{FUNIS[org.funil].descricao}</p>
+              {org.funil === "cadastro_teste_venda" && (
+                <Campo
+                  rotulo="Duração do teste grátis (dias)"
+                  name="dias_teste"
+                  type="number"
+                  min={1}
+                  max={90}
+                  defaultValue={org.dias_teste}
+                  ajuda="Diz quando sai a primeira cobrança de cada teste e, com isso, a partir de quando dá para julgar o custo por venda."
+                />
+              )}
             </Formulario>
           ) : (
             <p className="text-sm">{FUNIS[org.funil].rotulo}</p>
