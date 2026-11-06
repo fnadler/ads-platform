@@ -55,10 +55,27 @@ describe("lerCampanha — caso GN (06/11)", () => {
 
   it("aponta a página como causa da queda, com o anúncio ainda atraindo", () => {
     expect(a.tendencia.tom).toBe("agir");
-    expect(a.tendencia.titulo).toMatch(/página/);
-    expect(a.tendencia.texto).toMatch(/visitas que viram lead 29% → 19%/);
-    expect(a.tendencia.texto).toMatch(/O anúncio continua atraindo/);
-    expect(a.tendencia.texto).toMatch(/Conecte o Microsoft Clarity/);
+    expect(a.tendencia.titulo).toBe("Menos visitantes estão se cadastrando");
+    expect(a.tendencia.destaque).toEqual({ de: "29%", para: "19%", rotulo: "das visitas à página viram cadastro", sentido: "pior" });
+    expect(a.tendencia.acao).toBeTruthy();
+    expect(a.tendencia.detalhe).toMatch(/O anúncio continua atraindo/);
+    expect(a.tendencia.detalhe).toMatch(/Conecte o Microsoft Clarity/);
+  });
+
+  it("mostra as etapas do caminho com o peso de cada uma na queda", () => {
+    const passos = a.tendencia.passos!;
+    expect(passos.map((p) => p.rotulo)).toEqual([
+      "Verba gasta por dia",
+      "Custo para exibir mil vezes",
+      "De quem vê, quantos clicam",
+      "De quem clica, quantos abrem a página",
+      "De quem visita, quantos se cadastram",
+    ]);
+    const pagina = passos[4];
+    expect(pagina.piorou).toBe(true);
+    expect(Math.round(pagina.parte * 100)).toBe(52);
+    expect(passos[2]).toMatchObject({ piorou: false, parte: 0 }); // o CTR subiu
+    expect(passos[1].piorou).toBe(true); // CPM subiu = exibir ficou mais caro
   });
 
   it("aponta também a queda de gasto diário como fator secundário", () => {
@@ -67,7 +84,7 @@ describe("lerCampanha — caso GN (06/11)", () => {
 
   it("com o Clarity conectado e ainda sem coletas, não pede para conectar", () => {
     const b = porId({ ...GN, clarityConectado: true });
-    expect(b.tendencia.texto).toMatch(/ainda não cobre esse período/);
+    expect(b.tendencia.detalhe).toMatch(/ainda não cobre esses dias/);
     expect(b.clarity.tom).toBe("aguardar");
   });
 
@@ -77,6 +94,7 @@ describe("lerCampanha — caso GN (06/11)", () => {
 
   it("observa os leads recentes sem teste, sem alarmar (ainda pode ser acaso)", () => {
     expect(a["testes-recentes"].tom).toBe("observar");
+    expect(a["testes-recentes"].destaque?.para).toBe("0 de 25");
     expect(a["testes-recentes"].titulo).toMatch(/desde 04\/11/);
   });
 
@@ -85,13 +103,22 @@ describe("lerCampanha — caso GN (06/11)", () => {
   });
 
   it("nota a concentração no B Gaveta e os anúncios sem amostra", () => {
-    expect(a.concentracao.texto).toMatch(/73%/);
-    expect(a.concentracao.texto).toMatch(/A repetida/);
+    expect(a.concentracao.destaque).toMatchObject({ para: "73%" });
+    expect(a.concentracao.detalhe).toMatch(/“A1 \| A repetida” e “A1 \| C Digitando”/);
   });
 
   it("manda aguardar as cobranças de 09 e 10/11 para julgar custo por venda", () => {
     expect(a.maturidade.tom).toBe("aguardar");
-    expect(a.maturidade.texto).toMatch(/entre 09\/11 e 10\/11/);
+    expect(a.maturidade.destaque?.para).toBe("09/11");
+    expect(a.maturidade.detalhe).toMatch(/entre 09\/11 e 10\/11/);
+  });
+
+  it("todo achado tem o essencial (título e destaque) e o detalhe", () => {
+    for (const x of leitura.achados) {
+      expect(x.titulo.length).toBeLessThan(60);
+      expect(x.destaque).toBeTruthy();
+      expect(x.detalhe).toBeTruthy();
+    }
   });
 
   it("ordena: agir primeiro, ok por último", () => {
@@ -114,8 +141,8 @@ describe("lerCampanha — outros cenários", () => {
       erroScript: 0,
     }));
     const a = porId({ ...GN, clarity });
-    expect(a.tendencia.texto).toMatch(/rolagem média caiu de 60% para 38%/);
-    expect(a.tendencia.texto).toMatch(/volta rápida subiram/);
+    expect(a.tendencia.detalhe).toMatch(/descer menos na página \(de 60% para 38%/);
+    expect(a.tendencia.detalhe).toMatch(/voltam logo para o anúncio subiram/);
     expect(a.clarity.tom).toBe("observar");
   });
 
@@ -123,7 +150,7 @@ describe("lerCampanha — outros cenários", () => {
     const dias = GN.dias.slice(0, 4).concat([d("2026-11-04", 60, 4500, 1.2, 180, 160, 40, 30, 2), d("2026-11-05", 60, 4500, 1.2, 180, 160, 38, 30, 2)]);
     const a = porId({ ...GN, dias });
     expect(a.tendencia.tom).toBe("ok");
-    expect(a.tendencia.titulo).toBe("Ritmo de leads estável");
+    expect(a.tendencia.titulo).toBe("Cadastros no ritmo de sempre");
   });
 
   it("frequência alta com CTR em queda é saturação", () => {
@@ -136,7 +163,7 @@ describe("lerCampanha — outros cenários", () => {
     ];
     const a = porId({ ...GN, dias, hoje: "2026-11-06" });
     expect(a.saturacao.tom).toBe("agir");
-    expect(a.tendencia.titulo).toMatch(/Anúncios atraindo menos cliques/);
+    expect(a.tendencia.titulo).toBe("Menos gente está clicando nos anúncios");
   });
 
   it("menos de 4 dias completos: aguardar", () => {

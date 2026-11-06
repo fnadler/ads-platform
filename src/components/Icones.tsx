@@ -147,3 +147,14 @@ export const IconeMais = (p: P) => (
     <path d="M12 5v14M5 12h14" />
   </Base>
 );
+export const IconeChevron = (p: P) => (
+  <Base {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Base>
+);
+export const IconeRelogio = (p: P) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7.5V12l3 2" />
+  </Base>
+);

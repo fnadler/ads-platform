@@ -7,6 +7,10 @@
 //   • A queda de leads é decomposta pelas etapas do funil, para apontar onde agir — anúncio, leilão,
 //     entrega ou página —, em vez de chamar tudo de "saturação".
 //   • "Aguardar" é um resultado explícito, com a data em que haverá dado para decidir.
+//
+// Cada achado tem duas camadas, para quem não é do ramo: o essencial (título em linguagem simples,
+// um número em destaque e uma ação curta) e o detalhe (a explicação, as etapas do funil e a ação
+// completa), que a tela mostra só quando a pessoa pede.
 
 import { zProporcoes, zTaxas, probNenhum, significativo } from "./estatistica";
 import { moeda, pct, decimal, inteiro } from "@/lib/formato";
@@ -65,12 +69,38 @@ export interface EntradaLeitura {
 
 export type TomAchado = "agir" | "observar" | "aguardar" | "ok";
 
+/** O número que resume o achado. Com `de`, é uma mudança (antes → agora); com `fracao`, vira barra. */
+export interface Destaque {
+  de?: string;
+  para: string;
+  rotulo: string;
+  sentido?: "pior" | "melhor" | "neutro";
+  fracao?: number;
+}
+
+/** Uma etapa do caminho do anúncio ao cadastro, com quanto ela pesou na mudança. */
+export interface Passo {
+  rotulo: string;
+  de: string;
+  para: string;
+  /** Fração da mudança total explicada por esta etapa (0 a 1). */
+  parte: number;
+  piorou: boolean;
+}
+
 export interface Achado {
   id: string;
   tom: TomAchado;
+  /** Em linguagem simples, sem jargão. */
   titulo: string;
-  texto: string;
+  destaque?: Destaque;
+  /** Uma frase: o que fazer agora. */
   acao?: string;
+  /** A explicação completa, com os números. */
+  detalhe: string;
+  passos?: Passo[];
+  /** A orientação completa, quando a ação curta não basta. */
+  acaoDetalhe?: string;
 }
 
 export interface Leitura {
@@ -121,12 +151,13 @@ function janela(ds: DiaCampanha[]): Janela {
   }
   return j;
 }
-const periodo = (j: Janela) => (j.de === j.ate ? ddmm(j.de) : `${ddmm(j.de)}–${ddmm(j.ate)}`);
+const periodo = (j: Pick<Janela, "de" | "ate">) => (j.de === j.ate ? ddmm(j.de) : `${ddmm(j.de)} a ${ddmm(j.ate)}`);
 
-// ───────────────────────────── Regras ─────────────────────────────
+// ───────────────────────────── Queda ou alta de cadastros, por etapa ─────────────────────────────
 
-/** Etapas do funil: leads/dia = gasto/dia × impressões/real × CTR × visitas/clique × leads/visita. */
+/** Etapas do funil: cadastros/dia = gasto/dia × exibições/real × cliques/exibição × visitas/clique × cadastros/visita. */
 type Etapa = "entrega" | "leilao" | "anuncio" | "carregamento" | "pagina";
+const ETAPAS: Etapa[] = ["entrega", "leilao", "anuncio", "carregamento", "pagina"];
 
 function decompor(base: Janela, rec: Janela, usarMeta: boolean) {
   const leads = (j: Janela) => (usarMeta ? j.leadsMeta : j.leads);
@@ -141,24 +172,24 @@ function decompor(base: Janela, rec: Janela, usarMeta: boolean) {
   return { fatores, contrib };
 }
 
-function experienciaPagina(clarity: DiaClarity[], base: Janela, rec: Janela) {
+function experienciaPagina(clarity: DiaClarity[], base: Pick<Janela, "de" | "ate">, rec: Pick<Janela, "de" | "ate">) {
   const media = (ds: DiaClarity[], k: keyof Omit<DiaClarity, "dia">) => {
     const vs = ds.map((d) => d[k]).filter((v): v is number => typeof v === "number");
     return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null;
   };
-  const em = (j: Janela) => clarity.filter((d) => d.dia >= j.de && d.dia <= j.ate);
+  const em = (j: Pick<Janela, "de" | "ate">) => clarity.filter((d) => d.dia >= j.de && d.dia <= j.ate);
   const b = em(base);
   const r = em(rec);
   if (!b.length || !r.length) return null;
   const sinais: string[] = [];
   const rolB = media(b, "rolagem");
   const rolR = media(r, "rolagem");
-  if (rolB !== null && rolR !== null && rolR < rolB * 0.85) sinais.push(`a rolagem média caiu de ${decimal(rolB, 0)}% para ${decimal(rolR, 0)}% da página`);
+  if (rolB !== null && rolR !== null && rolR < rolB * 0.85) sinais.push(`as pessoas passaram a descer menos na página (de ${decimal(rolB, 0)}% para ${decimal(rolR, 0)}% da altura)`);
   for (const [k, nome, limite] of [
-    ["voltaRapida", "sessões com volta rápida", 5],
-    ["cliqueMorto", "sessões com clique sem resposta", 5],
-    ["cliqueRaiva", "sessões com cliques de irritação", 3],
-    ["erroScript", "sessões com erro de script", 2],
+    ["voltaRapida", "visitas que voltam logo para o anúncio", 5],
+    ["cliqueMorto", "visitas com clique em algo que não responde", 5],
+    ["cliqueRaiva", "visitas com cliques repetidos de irritação", 3],
+    ["erroScript", "visitas com erro técnico na página", 2],
   ] as const) {
     const vb = media(b, k);
     const vr = media(r, k);
@@ -168,14 +199,15 @@ function experienciaPagina(clarity: DiaClarity[], base: Janela, rec: Janela) {
 }
 
 function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
-  if (e.funil === "venda_direta") return []; // sem lead no meio: a leitura por etapa fica para a venda
+  if (e.funil === "venda_direta") return []; // sem cadastro no meio: a leitura por etapa fica para a venda
   if (completos.length < 4)
     return [
       {
         id: "tendencia-amostra",
         tom: "aguardar",
-        titulo: "Ainda cedo para ler tendência",
-        texto: `Há ${plural(completos.length, "dia completo", "dias completos")} de veiculação. A comparação entre os últimos dias e os anteriores começa com 4.`,
+        titulo: "Ainda é cedo para comparar dias",
+        destaque: { para: `${completos.length} de 4`, rotulo: "dias completos de campanha" },
+        detalhe: `A comparação entre os últimos dias e os anteriores começa com 4 dias completos de veiculação. Antes disso, qualquer subida ou descida pode ser só acaso.`,
       },
     ];
   const rec = janela(completos.slice(-2));
@@ -183,100 +215,169 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
   const usarMeta = base.leadsMeta + rec.leadsMeta > 0;
   const lb = usarMeta ? base.leadsMeta : base.leads;
   const lr = usarMeta ? rec.leadsMeta : rec.leads;
-  const rotulo = usarMeta ? "leads (Meta)" : "leads";
   const porDiaB = lb / base.dias;
   const porDiaR = lr / rec.dias;
   const v = variacao(porDiaB, porDiaR);
   const z = zTaxas(lb, base.dias, lr, rec.dias);
-  const comparacao = `${decimal(porDiaB, 0)} ${rotulo} por dia em ${periodo(base)} → ${decimal(porDiaR, 0)} em ${periodo(rec)} (${sinal(v)})`;
+  const comparacao = `Eram ${decimal(porDiaB, 0)} cadastros por dia (${periodo(base)}); agora são ${decimal(porDiaR, 0)} (${periodo(rec)}), ${sinal(v)}.${usarMeta ? " Contamos os cadastros que a Meta registra, para comparar com o resto do caminho." : ""}`;
+  const destaqueLeads = (sentido: Destaque["sentido"]): Destaque => ({ de: decimal(porDiaB, 0), para: decimal(porDiaR, 0), rotulo: "cadastros por dia", sentido });
 
   if (!significativo(z) || Math.abs(v) < 0.2)
-    return [{ id: "tendencia", tom: "ok", titulo: "Ritmo de leads estável", texto: `${comparacao}. A diferença está dentro da variação normal de poucos dias.` }];
+    return [
+      {
+        id: "tendencia",
+        tom: "ok",
+        titulo: "Cadastros no ritmo de sempre",
+        destaque: destaqueLeads("neutro"),
+        detalhe: `${comparacao} A diferença está dentro da variação normal de poucos dias.`,
+      },
+    ];
 
   const { fatores, contrib } = decompor(base, rec, usarMeta);
   const queda = v < 0;
-  const etapas = (Object.keys(contrib) as Etapa[]).filter((k) => (queda ? contrib[k] < -0.05 : contrib[k] > 0.05)).sort((a, b) => Math.abs(contrib[b]) - Math.abs(contrib[a]));
   const total = Math.abs(Math.log(porDiaR / porDiaB)) || 1;
-  const parte = (k: Etapa) => pct(Math.min(Math.abs(contrib[k]) / total, 1), 0);
-  const descreve: Record<Etapa, (k: Etapa) => string> = {
-    entrega: (k) => `gasto por dia ${moeda(fatores[k][0], e.moeda)} → ${moeda(fatores[k][1], e.moeda)}`,
-    leilao: (k) => `CPM ${moeda(1000 / fatores[k][0], e.moeda)} → ${moeda(1000 / fatores[k][1], e.moeda)}`,
-    anuncio: (k) => `CTR ${pct(fatores[k][0], 2)} → ${pct(fatores[k][1], 2)}`,
-    carregamento: (k) => `visitas à página por clique ${pct(fatores[k][0], 0)} → ${pct(fatores[k][1], 0)}`,
-    pagina: (k) => `visitas que viram lead ${pct(fatores[k][0], 0)} → ${pct(fatores[k][1], 0)}`,
+  const pesa = (k: Etapa) => (queda ? contrib[k] < -0.05 : contrib[k] > 0.05);
+  const etapas = ETAPAS.filter(pesa).sort((a, b) => Math.abs(contrib[b]) - Math.abs(contrib[a]));
+  const valor: Record<Etapa, (x: number) => string> = {
+    entrega: (x) => moeda(x, e.moeda),
+    leilao: (x) => moeda(1000 / x, e.moeda),
+    anuncio: (x) => pct(x, 1),
+    carregamento: (x) => pct(x, 0),
+    pagina: (x) => pct(x, 0),
   };
-  const nomes: Record<Etapa, string> = { entrega: "a entrega", leilao: "o leilão", anuncio: "o anúncio", carregamento: "o carregamento da página", pagina: "a página" };
+  const rotulos: Record<Etapa, string> = {
+    entrega: "Verba gasta por dia",
+    leilao: "Custo para exibir mil vezes",
+    anuncio: "De quem vê, quantos clicam",
+    carregamento: "De quem clica, quantos abrem a página",
+    pagina: "De quem visita, quantos se cadastram",
+  };
+  const passos: Passo[] = ETAPAS.map((k) => ({
+    rotulo: rotulos[k],
+    de: valor[k](fatores[k][0]),
+    para: valor[k](fatores[k][1]),
+    parte: pesa(k) ? Math.min(Math.abs(contrib[k]) / total, 1) : 0,
+    // No leilão, o fator é exibições por real: cair é ficar mais caro.
+    piorou: contrib[k] < 0,
+  }));
+  const destaqueEtapa = (k: Etapa): Destaque => {
+    const rotulo: Record<Etapa, string> = {
+      entrega: "gastos por dia",
+      leilao: "para exibir o anúncio mil vezes",
+      anuncio: "das pessoas que veem o anúncio clicam",
+      carregamento: "dos cliques chegam a abrir a página",
+      pagina: "das visitas à página viram cadastro",
+    };
+    // Gastar menos por dia não é bom nem ruim em si: fica neutro.
+    const sentido = k === "entrega" ? "neutro" : contrib[k] < 0 ? "pior" : "melhor";
+    return { de: valor[k](fatores[k][0]), para: valor[k](fatores[k][1]), rotulo: rotulo[k], sentido };
+  };
 
   if (!queda)
     return [
       {
         id: "tendencia",
         tom: "ok",
-        titulo: "Leads em alta",
-        texto: `${comparacao}. ${etapas.length ? `Puxado por ${etapas.map((k) => `${nomes[k]} (${descreve[k](k)})`).join(" e ")}.` : ""}`,
+        titulo: "Cadastros em alta",
+        destaque: destaqueLeads("melhor"),
+        detalhe: `${comparacao}${etapas.length ? ` O que mais ajudou: ${juntarE(etapas.map((k) => rotulos[k].toLowerCase()))}.` : ""}`,
+        passos,
       },
     ];
 
+  const textos: Record<Etapa, { titulo: string; acao: string; acaoDetalhe: string; tom: TomAchado; porque: string }> = {
+    pagina: {
+      titulo: "Menos visitantes estão se cadastrando",
+      tom: "agir",
+      acao: "Revise a página e o cadastro antes de mexer na campanha.",
+      acaoDetalhe:
+        "Faça o caminho do anúncio até o cadastro no celular e confira o que mudou no site nesses dias. Mexer na campanha agora faz a Meta recomeçar o aprendizado e não resolve a causa.",
+      porque: "As pessoas continuam chegando à página, mas menos delas se cadastram.",
+    },
+    carregamento: {
+      titulo: "Cliques não estão abrindo a página",
+      tom: "agir",
+      acao: "Confira se a página está no ar e rápida no celular.",
+      acaoDetalhe: "Veja também se o link do anúncio não passa por redirecionamentos que atrasam ou perdem a visita.",
+      porque: "Muita gente clica no anúncio, mas a página não chega a abrir.",
+    },
+    anuncio: {
+      titulo: "Menos gente está clicando nos anúncios",
+      tom: "observar",
+      acao: "Se continuar caindo, prepare anúncios novos.",
+      acaoDetalhe: "Teste os anúncios novos numa campanha ou conjunto separado, sem editar os que estão no ar.",
+      porque: "Das pessoas que veem o anúncio, uma parte menor clica.",
+    },
+    leilao: {
+      titulo: "Ficou mais caro exibir os anúncios",
+      tom: "observar",
+      acao: "Acompanhe: isso varia com a concorrência e o dia da semana.",
+      acaoDetalhe: "Se continuar por uma semana, teste públicos ou anúncios novos.",
+      porque: "Com o mesmo dinheiro, os anúncios aparecem menos vezes.",
+    },
+    entrega: {
+      titulo: "A Meta está gastando menos por dia",
+      tom: "observar",
+      acao: "Confira o orçamento restante e a data de término.",
+      acaoDetalhe: "Com orçamento total para o período, a Meta distribui o gasto ao longo dos dias e pode gastar menos em alguns.",
+      porque: "Com menos verba por dia, os anúncios aparecem menos.",
+    },
+  };
+
   const principal = etapas[0];
-  const detalhes = etapas.map((k) => `${descreve[k](k)} — ${parte(k)} da queda`).join("; ");
+  if (!principal)
+    return [
+      {
+        id: "tendencia",
+        tom: "observar",
+        titulo: "Cadastros em queda",
+        destaque: destaqueLeads("pior"),
+        detalhe: `${comparacao} Nenhuma etapa explica a queda sozinha.`,
+        passos,
+      },
+    ];
+
   const leadsDe = (j: Janela) => (usarMeta ? j.leadsMeta : j.leads);
   const zEtapa: Partial<Record<Etapa, number>> = {
     pagina: zProporcoes(leadsDe(base), base.lpv, leadsDe(rec), rec.lpv),
     anuncio: zProporcoes(base.cliques, base.impressoes, rec.cliques, rec.impressoes),
     carregamento: zProporcoes(base.lpv, base.cliques, rec.lpv, rec.cliques),
   };
-  const firme = principal && (zEtapa[principal] === undefined || significativo(zEtapa[principal]!));
+  const firme = zEtapa[principal] === undefined || significativo(zEtapa[principal]!);
+  const t = textos[principal];
 
-  const acoes: Record<Etapa, { titulo: string; acao: string; tom: TomAchado }> = {
-    pagina: {
-      titulo: "Queda de leads vem da página, não do anúncio",
-      tom: "agir",
-      acao: "Revise a página de destino e o cadastro antes de mexer na campanha: faça o caminho do anúncio ao cadastro no celular e confira o que mudou no site nesses dias. Editar a campanha agora reinicia o aprendizado da Meta sem resolver a causa.",
-    },
-    carregamento: {
-      titulo: "Cliques não estão chegando à página",
-      tom: "agir",
-      acao: "Confira se a página está no ar e rápida no celular, e se o link do anúncio não passa por redirecionamentos.",
-    },
-    anuncio: {
-      titulo: "Anúncios atraindo menos cliques",
-      tom: "observar",
-      acao: "Se a queda de CTR continuar, prepare criativos novos e teste-os em campanha ou conjunto separado, sem editar os que estão no ar.",
-    },
-    leilao: {
-      titulo: "Leilão mais caro",
-      tom: "observar",
-      acao: "CPM varia com a concorrência e o dia da semana. Acompanhe; se persistir por uma semana, teste públicos ou criativos novos.",
-    },
-    entrega: {
-      titulo: "A Meta está gastando menos por dia",
-      tom: "observar",
-      acao: "Com orçamento total, a Meta redistribui o ritmo ao longo do período. Confira o orçamento restante e a data de término.",
-    },
-  };
-
-  const achados: Achado[] = [];
-  if (principal) {
-    const a = acoes[principal];
-    let texto = `${comparacao}. Onde a queda aconteceu: ${detalhes}.`;
-    if (principal === "pagina") {
-      const sinais = experienciaPagina(e.clarity, base, rec);
-      if (sinais === null)
-        texto +=
-          e.clarityConectado || e.clarity.length
-            ? " O Clarity ainda não cobre esse período; a partir das próximas coletas, a experiência na página entra nesta leitura."
-            : " Conecte o Microsoft Clarity em Configurações para ver rolagem, cliques e erros na página.";
-      else if (sinais.length) texto += ` No Clarity, no mesmo período: ${sinais.join("; ")}.`;
-      else texto += " No Clarity, rolagem, cliques e erros não mudaram: a causa provável é a mensagem ou a oferta, não um problema técnico.";
-    }
-    if (principal === "pagina" && contrib.anuncio > -0.05) texto += ` O anúncio continua atraindo: ${descreve.anuncio("anuncio")}.`;
-    achados.push({ id: "tendencia", tom: firme ? a.tom : "observar", titulo: a.titulo, texto: firme ? texto : `${texto} A diferença nessa etapa ainda pode ser ruído; confirme nos próximos dias.`, acao: a.acao });
-    for (const k of etapas.slice(1)) if (Math.abs(contrib[k]) / total >= 0.3) achados.push({ id: `tendencia-${k}`, tom: "observar", titulo: acoes[k].titulo, texto: `${descreve[k](k)} — ${parte(k)} da queda de leads.`, acao: acoes[k].acao });
-  } else {
-    achados.push({ id: "tendencia", tom: "observar", titulo: "Leads em queda", texto: `${comparacao}, sem uma etapa que explique sozinha.` });
+  let detalhe = `${t.porque} ${comparacao} Abaixo, quanto cada etapa pesou na queda.`;
+  if (principal === "pagina") {
+    if (contrib.anuncio > -0.05) detalhe += ` O anúncio continua atraindo: de quem vê, ${pct(fatores.anuncio[1], 1)} clicam (antes, ${pct(fatores.anuncio[0], 1)}).`;
+    const sinais = experienciaPagina(e.clarity, base, rec);
+    if (sinais === null)
+      detalhe +=
+        e.clarityConectado || e.clarity.length
+          ? " O Clarity ainda não cobre esses dias; nas próximas coletas, o comportamento na página entra nesta leitura."
+          : " Conecte o Microsoft Clarity em Configurações para ver como as pessoas usam a página.";
+    else if (sinais.length) detalhe += ` No Clarity, nesses dias: ${juntarE(sinais)}.`;
+    else detalhe += " No Clarity, o uso da página não mudou: a causa provável é a mensagem ou a oferta, não um problema técnico.";
   }
+  if (!firme) detalhe += " A diferença ainda pode ser acaso; confirme nos próximos dias.";
+
+  const achados: Achado[] = [
+    { id: "tendencia", tom: firme ? t.tom : "observar", titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
+  ];
+  for (const k of etapas.slice(1))
+    if (Math.abs(contrib[k]) / total >= 0.3)
+      achados.push({
+        id: `tendencia-${k}`,
+        tom: "observar",
+        titulo: textos[k].titulo,
+        destaque: destaqueEtapa(k),
+        acao: textos[k].acao,
+        detalhe: `${textos[k].porque} Isso explica ${pct(Math.abs(contrib[k]) / total, 0)} da queda de cadastros.`,
+        acaoDetalhe: textos[k].acaoDetalhe,
+      });
   return achados;
 }
+
+// ───────────────────────────── Demais regras ─────────────────────────────
 
 function regraSaturacao(completos: DiaCampanha[]): Achado | null {
   if (completos.length < 4) return null;
@@ -287,27 +388,33 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
   const ctrR = rec.impressoes ? rec.cliques / rec.impressoes : 0;
   const z = zProporcoes(base.cliques, base.impressoes, rec.cliques, rec.impressoes);
   const caiu = ctrR < ctrB * 0.8 && significativo(z);
+  const destaqueFreq: Destaque = { para: `${decimal(freq, 1)}×`, rotulo: "por dia: quantas vezes cada pessoa vê o anúncio" };
+  const cliques = `De quem vê o anúncio, ${pct(ctrR, 1)} clicam (antes, ${pct(ctrB, 1)}).`;
   if (freq >= 2.5 && caiu)
     return {
       id: "saturacao",
       tom: "agir",
-      titulo: "Sinais de saturação do público",
-      texto: `Frequência diária de ${decimal(freq, 1)} e CTR caindo de ${pct(ctrB, 2)} para ${pct(ctrR, 2)}: as mesmas pessoas estão vendo o anúncio e clicando menos.`,
-      acao: "Amplie o público ou renove os criativos (em campanha ou conjunto separado, para não reiniciar o aprendizado).",
+      titulo: "O público está cansando do anúncio",
+      destaque: destaqueFreq,
+      acao: "Amplie o público ou renove os anúncios.",
+      detalhe: `As mesmas pessoas estão vendo o anúncio várias vezes por dia e clicando cada vez menos. ${cliques}`,
+      acaoDetalhe: "Faça isso numa campanha ou conjunto separado, para não fazer a Meta recomeçar o aprendizado da campanha atual.",
     };
   if (caiu)
     return {
       id: "saturacao",
       tom: "observar",
-      titulo: "CTR caindo com frequência baixa",
-      texto: `CTR ${pct(ctrB, 2)} → ${pct(ctrR, 2)} com frequência diária de ${decimal(freq, 1)}: não é repetição para as mesmas pessoas; o criativo pode estar perdendo força.`,
-      acao: "Prepare variações de criativo para testar se a queda continuar.",
+      titulo: "O anúncio pode estar perdendo força",
+      destaque: { de: pct(ctrB, 1), para: pct(ctrR, 1), rotulo: "das pessoas que veem o anúncio clicam", sentido: "pior" },
+      acao: "Prepare variações do anúncio, caso continue caindo.",
+      detalhe: `Menos gente clica, mas não é repetição: cada pessoa vê o anúncio ${decimal(freq, 1)} vez(es) por dia.`,
     };
   return {
     id: "saturacao",
     tom: "ok",
-    titulo: "Sem sinal de saturação",
-    texto: `Frequência diária de ${decimal(freq, 1)} e CTR ${ctrR >= ctrB ? "estável ou em alta" : "estável"} (${pct(ctrB, 2)} → ${pct(ctrR, 2)}). O público ainda não se esgotou.`,
+    titulo: "O público ainda não cansou",
+    destaque: destaqueFreq,
+    detalhe: `Cada pessoa vê o anúncio ${decimal(freq, 1)} vez(es) por dia, e os cliques ${ctrR >= ctrB ? "se mantêm ou sobem" : "se mantêm"}. ${cliques} Saturação aparece quando as mesmas pessoas veem o anúncio muitas vezes (2,5 ou mais por dia) e param de clicar.`,
   };
 }
 
@@ -322,9 +429,11 @@ function regraConcentracao(e: EntradaLeitura, completos: DiaCampanha[]): Achado 
   return {
     id: "concentracao",
     tom: "observar",
-    titulo: `A Meta escolheu “${lider.nome}”`,
-    texto: `${pct(fatia, 0)} da verba foi para esse anúncio.${poucos.length ? ` ${juntarE(poucos.map((a) => `“${a.nome}”`))} ${poucos.length === 1 ? "teve" : "tiveram"} menos de 1.000 impressões: não dá para dizer se ${poucos.length === 1 ? "funciona" : "funcionam"}.` : ""}`,
-    acao: "Para testar de verdade outros ganchos, coloque-os numa campanha ou conjunto separado, com verba própria.",
+    titulo: `A Meta apostou quase tudo em “${lider.nome}”`,
+    destaque: { para: pct(fatia, 0), rotulo: "da verba foi para esse anúncio", fracao: fatia },
+    acao: "Para testar outros anúncios, dê a eles verba própria.",
+    detalhe: `A Meta coloca a verba no anúncio que parece melhor no começo.${poucos.length ? ` ${juntarE(poucos.map((a) => `“${a.nome}”`))} ${poucos.length === 1 ? "apareceu" : "apareceram"} menos de mil vezes: ainda não dá para saber se ${poucos.length === 1 ? "funciona" : "funcionam"}.` : ""}`,
+    acaoDetalhe: "Coloque os anúncios que quer testar numa campanha ou conjunto separado, com verba própria.",
   };
 }
 
@@ -343,9 +452,11 @@ function regraQualidade(e: EntradaLeitura): Achado[] {
         {
           id: `qualidade-${a.ad_id}`,
           tom: chance < 0.05 ? "agir" : "observar",
-          titulo: `“${a.nome}” traz leads que não testam`,
-          texto: `${plural(a.leads, "lead", "leads")} e nenhum teste; pela média da campanha (${pct(p, 0)}), o esperado seria ${decimal(a.leads * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}.`,
-          acao: chance < 0.05 ? "Reduza a verba desse anúncio ou troque a promessa: ele atrai cadastro sem intenção de usar." : "Acompanhe: mais alguns leads sem teste confirmam o padrão.",
+          titulo: `“${a.nome}” traz cadastros que não testam`,
+          destaque: { para: `0 de ${inteiro(a.leads)}`, rotulo: "cadastros começaram o teste grátis", sentido: "pior" },
+          acao: chance < 0.05 ? "Reduza a verba desse anúncio ou mude a promessa." : "Acompanhe mais alguns cadastros.",
+          detalhe: `Na campanha, ${pct(p, 0)} dos cadastros começam o teste grátis; nesse anúncio, nenhum. O esperado seriam ${decimal(a.leads * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}.`,
+          acaoDetalhe: chance < 0.05 ? "Ele atrai gente que se cadastra sem intenção de usar." : undefined,
         } satisfies Achado,
       ];
     });
@@ -371,12 +482,11 @@ function regraTestesRecentes(e: EntradaLeitura): Achado | null {
   return {
     id: "testes-recentes",
     tom: chance < 0.05 ? "agir" : "observar",
-    titulo: `Nenhum lead iniciou teste desde ${ddmm(desde)}`,
-    texto: `${plural(n, "lead chegou", "leads chegaram")} desde ${ddmm(desde)} e nenhum começou o teste grátis; antes, ${pct(p, 0)} começavam (esperado agora: ${decimal(n * p, 1)}). A chance de ser só acaso é de ${pct(chance, 0)}.`,
-    acao:
-      chance < 0.05
-        ? "Confira o caminho do cadastro até o checkout: botão de assinatura, página do Stripe e e-mails. Algo pode ter quebrado depois do cadastro."
-        : "Acompanhe nos próximos dias e confira o caminho do cadastro até o checkout.",
+    titulo: `Ninguém começou o teste grátis desde ${ddmm(desde)}`,
+    destaque: { para: `0 de ${inteiro(n)}`, rotulo: `cadastros desde ${ddmm(desde)} começaram o teste`, sentido: "pior" },
+    acao: chance < 0.05 ? "Confira o caminho do cadastro até o pagamento." : "Acompanhe e teste o caminho do cadastro até o pagamento.",
+    detalhe: `Antes, ${pct(p, 0)} dos cadastros começavam o teste grátis. Com ${plural(n, "cadastro novo", "cadastros novos")}, o esperado seriam ${decimal(n * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}${chance < 0.05 ? "" : ", então ainda pode ser coincidência"}.`,
+    acaoDetalhe: "Teste o botão de assinatura, a página de pagamento e os e-mails depois do cadastro: algo pode ter quebrado depois do cadastro.",
   };
 }
 
@@ -392,9 +502,11 @@ function regraRastreio(completos: DiaCampanha[]): Achado | null {
   return {
     id: "rastreio",
     tom: "agir",
-    titulo: "Leads deixando de chegar ao sistema",
-    texto: `Antes, ${pct(rb, 0)} dos leads que a Meta conta chegavam ao sistema com o anúncio; em ${periodo(rec)}, ${pct(rr, 0)}.`,
-    acao: "Confira em Rastreio se os anúncios mantêm os parâmetros de URL e se o site continua enviando os leads.",
+    titulo: "Cadastros chegando sem a origem do anúncio",
+    destaque: { de: pct(rb, 0), para: pct(rr, 0), rotulo: "dos cadastros chegam com o anúncio de origem", sentido: "pior" },
+    acao: "Confira o rastreio dos anúncios e do site.",
+    detalhe: `Dos cadastros que a Meta conta, ${pct(rr, 0)} chegaram ao sistema com o anúncio de origem em ${periodo(rec)}; antes, ${pct(rb, 0)}. Sem a origem, as vendas desses cadastros não aparecem no anúncio certo.`,
+    acaoDetalhe: "Em Rastreio, veja se os anúncios mantêm os parâmetros de URL e se o site continua enviando os cadastros.",
   };
 }
 
@@ -405,18 +517,21 @@ function regraMaturidade(e: EntradaLeitura): Achado | null {
       return {
         id: "maturidade",
         tom: "aguardar",
-        titulo: `Custo por venda só a partir de ${ddmm(cobrancas[0])}`,
-        texto: `${plural(e.testesAtivos.length, "teste em andamento", "testes em andamento")}; as cobranças acontecem entre ${ddmm(cobrancas[0])} e ${ddmm(cobrancas.at(-1)!)} (teste de ${e.diasTeste} dias). ${e.vendas ? `Até agora, ${plural(e.vendas, "venda", "vendas")}.` : "Até lá, não há venda para medir."}`,
-        acao: "Não julgue a campanha por custo por venda ou ROAS antes disso. Até lá, acompanhe leads e quantos iniciam o teste.",
+        titulo: "Ainda não dá para medir as vendas",
+        destaque: { para: ddmm(cobrancas[0]), rotulo: `primeira cobrança dos ${plural(e.testesAtivos.length, "teste", "testes")} em andamento` },
+        acao: "Até lá, acompanhe cadastros e testes.",
+        detalhe: `O teste grátis dura ${e.diasTeste} dias, então as cobranças dos testes em andamento caem entre ${ddmm(cobrancas[0])} e ${ddmm(cobrancas.at(-1)!)}. ${e.vendas ? `Até agora, ${plural(e.vendas, "venda", "vendas")}.` : "Até lá, não há venda para medir."}`,
+        acaoDetalhe: "Não julgue a campanha pelo custo por venda ou pelo ROAS antes disso.",
       };
   }
   if (e.vendas > 0 && e.vendas < 5)
     return {
       id: "maturidade",
       tom: "aguardar",
-      titulo: "Poucas vendas para medir custo por venda",
-      texto: `${plural(e.vendas, "venda", "vendas")} até agora: o custo por venda ainda muda muito a cada venda nova.`,
-      acao: "Use o custo por venda como direção, não como veredito, até umas 5 vendas.",
+      titulo: "Poucas vendas para tirar conclusão",
+      destaque: { para: `${e.vendas} de 5`, rotulo: "vendas para o custo por venda ficar confiável" },
+      acao: "Use o custo por venda como direção, não como veredito.",
+      detalhe: "Com poucas vendas, o custo por venda muda muito a cada venda nova.",
     };
   return null;
 }
@@ -427,8 +542,9 @@ function regraClarity(e: EntradaLeitura): Achado | null {
       ? {
           id: "clarity",
           tom: "aguardar",
-          titulo: "Clarity conectado, primeira coleta à meia-noite",
-          texto: "A coleta diária da experiência na página roda às 0h10 e guarda o dia anterior. A comparação de rolagem, cliques e erros começa com 4 dias coletados.",
+          titulo: "Clarity começando a medir a página",
+          destaque: { para: "0 de 4", rotulo: "dias medidos para comparar" },
+          detalhe: "A coleta diária roda à meia-noite e guarda o dia anterior. Com 4 dias, a leitura passa a comparar como as pessoas usam a página: até onde descem, onde clicam e se aparecem erros.",
         }
       : null;
   const comSessao = e.clarity.filter((d) => (d.sessoes ?? 0) > 0);
@@ -436,21 +552,23 @@ function regraClarity(e: EntradaLeitura): Achado | null {
     return {
       id: "clarity",
       tom: "aguardar",
-      titulo: "Clarity coletando",
-      texto: `${plural(comSessao.length, "dia", "dias")} de experiência na página registrados${comSessao.length ? ` desde ${ddmm(comSessao[0].dia)}` : ""}. A comparação de rolagem, cliques e erros começa com 4 dias.`,
+      titulo: "Clarity começando a medir a página",
+      destaque: { para: `${comSessao.length} de 4`, rotulo: "dias medidos para comparar" },
+      detalhe: `Com 4 dias de visitas registradas${comSessao.length ? ` (o primeiro foi ${ddmm(comSessao[0].dia)})` : ""}, a leitura passa a comparar como as pessoas usam a página: até onde descem, onde clicam e se aparecem erros.`,
     };
   const rec = comSessao.slice(-2);
   const base = comSessao.slice(-5, -2);
-  const jb = { de: base[0].dia, ate: base.at(-1)!.dia } as Janela;
-  const jr = { de: rec[0].dia, ate: rec.at(-1)!.dia } as Janela;
+  const jb = { de: base[0].dia, ate: base.at(-1)!.dia };
+  const jr = { de: rec[0].dia, ate: rec.at(-1)!.dia };
   const sinais = experienciaPagina(e.clarity, jb, jr);
   if (!sinais?.length) return null;
   return {
     id: "clarity",
     tom: "observar",
-    titulo: "Experiência na página piorou",
-    texto: `Entre ${periodo(jb)} e ${periodo(jr)}: ${sinais.join("; ")}.`,
-    acao: "Abra as gravações do Clarity desses dias filtrando por origem = anuncio_meta e veja onde as pessoas travam.",
+    titulo: "Ficou mais difícil usar a página",
+    acao: "Veja as gravações do Clarity desses dias.",
+    detalhe: `Entre ${periodo(jb)} e ${periodo(jr)}, ${juntarE(sinais)}.`,
+    acaoDetalhe: "No Clarity, filtre as gravações por origem = anuncio_meta e veja onde as pessoas travam.",
   };
 }
 
@@ -460,15 +578,17 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
   const completos = e.dias.filter((d) => d.dia < e.hoje && (d.gasto > 0 || d.leads > 0));
   const temHoje = e.dias.some((d) => d.dia === e.hoje && d.gasto > 0);
   const ultimo = completos.at(-1)?.dia ?? null;
-  const nota = ultimo
-    ? `Leitura até ${ddmm(ultimo)}, o último dia completo.${temHoje ? ` Hoje fica de fora: os dados da Meta vão até ${e.sincronizadoAs ?? "a última sincronização"} e o dia ainda não terminou.` : ""}`
-    : null;
+  const nota = ultimo ? `Dados até ${ddmm(ultimo)}.${temHoje ? " Hoje fica de fora porque o dia ainda não terminou." : ""}` : null;
+  // Ordem dentro de cada estado = importância: a causa principal da queda, o que afeta venda (testes,
+  // rastreio, qualidade), depois as causas secundárias e a distribuição da verba.
+  const [principal, ...secundarios] = regraTendencia(e, completos);
   const achados = [
-    ...regraTendencia(e, completos),
+    principal,
     regraSaturacao(completos),
     regraRastreio(completos),
     regraTestesRecentes(e),
     ...regraQualidade(e),
+    ...secundarios,
     regraConcentracao(e, completos),
     regraMaturidade(e),
     regraClarity(e),

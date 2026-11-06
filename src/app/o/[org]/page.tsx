@@ -1,6 +1,6 @@
 import { IconeCheck, IconeSeta } from "@/components/Icones";
-import { ItemAchado } from "@/components/LeituraCampanha";
-import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
+import { GradeAchados, ResumoLeitura } from "@/components/LeituraCampanha";
+import { Aviso, BotaoLink, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { dataHora, inteiro } from "@/lib/formato";
 import { campanhasAtivas, carregarLeitura } from "@/lib/leitura/carregar";
@@ -79,23 +79,23 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
           </Aviso>
         )}
         {atencao.map((c) => (
-          <Cartao
-            key={c.id}
-            titulo={`O que pede atenção · ${c.nome}`}
-            descricao={c.leitura.nota ?? undefined}
-            acoes={
-              <BotaoLink variante="secundario" href={rotaOrg(slug, `/desempenho?campanha=${c.id}`)}>
-                Leitura completa
-                <IconeSeta tamanho={16} />
-              </BotaoLink>
-            }
-          >
-            <ul className="flex flex-col">
-              {c.achados.map((a) => (
-                <ItemAchado key={a.id} achado={a} />
-              ))}
-            </ul>
-          </Cartao>
+          <section key={c.id} className="flex flex-col gap-4" aria-label={`O que pede atenção na campanha ${c.nome}`}>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0">
+                <span className="sobrancelha">O que pede atenção</span>
+                <h2 className="mt-1 text-lg font-[600] text-ink [overflow-wrap:anywhere]">{c.nome}</h2>
+                {c.leitura.nota && <p className="mt-0.5 text-sm text-ink-3">{c.leitura.nota}</p>}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <ResumoLeitura achados={c.leitura.achados} />
+                <BotaoLink variante="secundario" href={rotaOrg(slug, `/desempenho?campanha=${c.id}`)}>
+                  Ver a campanha
+                  <IconeSeta tamanho={16} />
+                </BotaoLink>
+              </div>
+            </div>
+            <GradeAchados achados={c.achados} />
+          </section>
         ))}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
