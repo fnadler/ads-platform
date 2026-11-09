@@ -367,6 +367,33 @@ const PARADO: Record<string, string> = {
   ARCHIVED: "Arquivado",
   DELETED: "Excluído",
 };
+/** Estados em que o anúncio ainda não veicula, mas não está parado. */
+const OUTRO_STATUS: Record<string, string> = { IN_PROCESS: "Em análise", PENDING_REVIEW: "Em análise", DISAPPROVED: "Reprovado", WITH_ISSUES: "Com problema" };
+
+/** Situação do anúncio no rodapé do cartão: "No ar" com o ponto pulsando, ou o motivo de não estar. */
+function SituacaoAnuncio({ status }: { status: string | null }) {
+  if (status === "ACTIVE")
+    return (
+      <span className="inline-flex h-6 items-center gap-2 rounded-full border border-ok-line bg-ok-soft px-2.5 text-xs font-[600] text-ok">
+        <span className="relative flex size-2" aria-hidden="true">
+          <span className="absolute inline-flex size-full rounded-full bg-ok opacity-60 motion-safe:animate-ping" />
+          <span className="relative inline-flex size-2 rounded-full bg-ok" />
+        </span>
+        No ar
+      </span>
+    );
+  const parado = status ? PARADO[status] : undefined;
+  const outro = status ? OUTRO_STATUS[status] : undefined;
+  if (!parado && !outro) return <span />;
+  return (
+    <span
+      className={`inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-xs font-[600] ${parado ? "border-line-strong bg-sunken text-ink-2" : status === "DISAPPROVED" || status === "WITH_ISSUES" ? "border-err-line bg-err-soft text-err" : "border-warn-line bg-warn-soft text-warn"}`}
+    >
+      {parado && <span className="text-[10px] leading-none">Ⅱ</span>}
+      {parado ?? outro}
+    </span>
+  );
+}
 
 function CartaoAnuncio({ l, d, selo, fatia }: { l: Linha; d: DadosDetalhe; selo?: Selo; fatia: number }) {
   const direta = d.funil === "venda_direta";
@@ -374,11 +401,6 @@ function CartaoAnuncio({ l, d, selo, fatia }: { l: Linha; d: DadosDetalhe; selo?
   const parado = l.status ? PARADO[l.status] : undefined;
   return (
     <article className={`relative flex flex-col gap-4 rounded-lg border p-4 ${parado ? "border-dashed border-line-strong bg-surface-2" : "border-line bg-surface shadow-card"}`}>
-      {parado && (
-        <span className="inline-flex h-6 items-center gap-1.5 self-start rounded-full border border-line-strong bg-sunken px-2.5 text-xs font-[600] text-ink-2">
-          <span className="text-[10px] leading-none">Ⅱ</span> {parado}
-        </span>
-      )}
       {/* Em tons de cinza quando parado: os números continuam lá, mas sem a cor de quem está no ar. */}
       <div className={`flex flex-col gap-4 ${parado ? "opacity-60 grayscale" : ""}`}>
         <div className="flex gap-3">
@@ -431,9 +453,9 @@ function CartaoAnuncio({ l, d, selo, fatia }: { l: Linha; d: DadosDetalhe; selo?
           </div>
         </dl>
       </div>
-      {d.acoes?.podeAgir && d.acoes.anuncios.find((a) => a.id === l.ad_id)?.daPlataforma && (l.status === "ACTIVE" || l.status === "PAUSED") && (
-        <div className="-mb-1 flex items-center justify-between gap-2 border-t border-line pt-2">
-          <span className={`text-xs font-medium ${l.status === "ACTIVE" ? "text-ok" : "text-ink-3"}`}>{l.status === "ACTIVE" ? "No ar" : "Fora do ar"}</span>
+      <div className="mt-auto flex min-h-11 items-center justify-between gap-2 border-t border-line pt-2 -mb-1">
+        <SituacaoAnuncio status={l.status} />
+        {d.acoes?.podeAgir && d.acoes.anuncios.find((a) => a.id === l.ad_id)?.daPlataforma && (l.status === "ACTIVE" || l.status === "PAUSED") && (
           <BotaoAcao
             acao={l.status === "ACTIVE" ? { tipo: "pausar_anuncio", anuncio: l.ad_id } : { tipo: "reativar_anuncio", anuncio: l.ad_id }}
             ctx={d.acoes}
@@ -441,8 +463,8 @@ function CartaoAnuncio({ l, d, selo, fatia }: { l: Linha; d: DadosDetalhe; selo?
             className="min-h-10 px-3"
             rotulo={l.status === "ACTIVE" ? "Pausar" : "Reativar"}
           />
-        </div>
-      )}
+        )}
+      </div>
     </article>
   );
 }
