@@ -5,14 +5,14 @@ import type { Achado, Destaque, Leitura, Passo, TomAchado } from "@/lib/leitura/
 // Leitura da campanha para quem não é do ramo. Cada cartão mostra só o essencial — o estado, um título
 // simples, um número em destaque e o que fazer — e guarda a explicação em "Ver detalhes".
 
-const TOM: Record<TomAchado, { rotulo: string; resumo: (n: number) => string; faixa: string; chip: string; Icone: ComponentType<{ tamanho?: number; strokeWidth?: number }> }> = {
+export const TOM: Record<TomAchado, { rotulo: string; resumo: (n: number) => string; faixa: string; chip: string; Icone: ComponentType<{ tamanho?: number; strokeWidth?: number }> }> = {
   agir: { rotulo: "Agir agora", resumo: (n) => `${n} para agir`, faixa: "bg-err", chip: "border-err-line bg-err-soft text-err", Icone: IconeX },
   observar: { rotulo: "Acompanhar", resumo: (n) => `${n} para acompanhar`, faixa: "bg-warn", chip: "border-warn-line bg-warn-soft text-warn", Icone: IconeExclamacao },
   aguardar: { rotulo: "Aguardar", resumo: (n) => `${n} aguardando dados`, faixa: "bg-accent", chip: "border-line bg-accent-soft text-accent-text", Icone: IconeRelogio },
   ok: { rotulo: "Tudo certo", resumo: (n) => `${n} tudo certo`, faixa: "bg-ok", chip: "border-ok-line bg-ok-soft text-ok", Icone: IconeCheck },
 };
 
-function Chip({ tom, children }: { tom: TomAchado; children: ReactNode }) {
+export function Chip({ tom, children }: { tom: TomAchado; children: ReactNode }) {
   const t = TOM[tom];
   return (
     <span className={`inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-[600] ${t.chip}`}>
@@ -24,7 +24,7 @@ function Chip({ tom, children }: { tom: TomAchado; children: ReactNode }) {
 
 const corSentido = { pior: "text-err", melhor: "text-ok", neutro: "text-ink" } as const;
 
-function NumeroDestaque({ d }: { d: Destaque }) {
+export function NumeroDestaque({ d }: { d: Destaque }) {
   const cor = corSentido[d.sentido ?? "neutro"];
   return (
     <div className="flex flex-col gap-1.5">
@@ -48,7 +48,7 @@ function NumeroDestaque({ d }: { d: Destaque }) {
 }
 
 /** O caminho do anúncio ao cadastro, etapa por etapa, com o peso de cada uma na mudança. */
-function Caminho({ passos }: { passos: Passo[] }) {
+export function Caminho({ passos }: { passos: Passo[] }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="sobrancelha mb-1">Onde os cadastros mudaram</span>
@@ -73,7 +73,7 @@ function Caminho({ passos }: { passos: Passo[] }) {
 }
 
 /** Cartão de um achado. `largo`: ocupa a linha toda (o que pede ação), com o essencial lado a lado. */
-export function CartaoAchado({ achado, largo }: { achado: Achado; largo?: boolean }) {
+export function CartaoAchado({ achado, largo, extra }: { achado: Achado; largo?: boolean; extra?: ReactNode }) {
   const t = TOM[achado.tom];
   const temDetalhe = achado.detalhe || achado.passos?.length || achado.acaoDetalhe;
   return (
@@ -95,6 +95,7 @@ export function CartaoAchado({ achado, largo }: { achado: Achado; largo?: boolea
             </p>
           )}
         </div>
+        {extra}
         {temDetalhe && (
           <details className="group border-t border-line pt-3">
             <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-sm font-[550] text-accent-text [&::-webkit-details-marker]:hidden">
@@ -139,18 +140,18 @@ export function ResumoLeitura({ achados }: { achados: Achado[] }) {
  * O que pede ação ocupa a linha toda; o resto vai em colunas que crescem para baixo, para que abrir os
  * detalhes de um cartão não abra buracos ao lado (como numa grade de linhas).
  */
-export function GradeAchados({ achados }: { achados: Achado[] }) {
+export function GradeAchados({ achados, extra }: { achados: Achado[]; extra?: (a: Achado) => ReactNode }) {
   const agir = achados.filter((a) => a.tom === "agir");
   const resto = achados.filter((a) => a.tom !== "agir");
   return (
     <div className="flex flex-col gap-4">
       {agir.map((a) => (
-        <CartaoAchado key={a.id} achado={a} largo />
+        <CartaoAchado key={a.id} achado={a} largo extra={extra?.(a)} />
       ))}
       {!!resto.length && (
         <div className="gap-4 sm:columns-2 xl:columns-3 [&>*]:mb-4 [&>*]:break-inside-avoid">
           {resto.map((a) => (
-            <CartaoAchado key={a.id} achado={a} />
+            <CartaoAchado key={a.id} achado={a} extra={extra?.(a)} />
           ))}
         </div>
       )}
@@ -172,6 +173,38 @@ export function LeituraCampanha({ leitura }: { leitura: Leitura }) {
         <ResumoLeitura achados={leitura.achados} />
       </div>
       <GradeAchados achados={leitura.achados} />
+    </section>
+  );
+}
+
+const VEREDITO: Record<TomAchado, string> = { agir: "Precisa de ação", observar: "Pede atenção", aguardar: "Ainda é cedo", ok: "Funcionando" };
+
+/**
+ * O veredito de uma parte da campanha numa frase: o estado mais urgente entre os achados e o título do
+ * primeiro deles. Sem achados, vale o texto padrão (nada fora do normal).
+ */
+export function Veredito({ achados, padrao, nota }: { achados: Achado[]; padrao: string; nota?: string | null }) {
+  const [primeiro] = achados; // já vêm em ordem de urgência
+  const tom: TomAchado = primeiro?.tom ?? "ok";
+  const t = TOM[tom];
+  const mesmos = achados.filter((a) => a.tom === tom).length;
+  const titulo = primeiro && (tom !== "ok" || achados.length === 1) ? primeiro.titulo : padrao;
+  return (
+    <section className="flex overflow-hidden rounded-lg border border-line bg-surface shadow-card" aria-label="Veredito">
+      <div className={`w-1.5 shrink-0 ${t.faixa}`} aria-hidden="true" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2 p-5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Chip tom={tom}>{VEREDITO[tom]}</Chip>
+          {nota && <span className="text-xs text-ink-3">{nota}</span>}
+        </div>
+        <p className="text-lg font-[600] leading-snug text-ink [text-wrap:balance] sm:text-xl">{titulo}</p>
+        {(tom === "agir" || tom === "observar") && (
+          <p className="text-sm text-ink-2">
+            {primeiro.acao}
+            {mesmos > 1 && ` E mais ${mesmos - 1} ${mesmos - 1 === 1 ? "ponto" : "pontos"} abaixo.`}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

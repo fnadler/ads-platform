@@ -2,104 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeVoltar } from "@/components/Icones";
-import { LeituraCampanha } from "@/components/LeituraCampanha";
-import { Aviso, Cartao, corAnuncio, Indicador, Indicadores, MiniaturaCriativo, Tabela, Titulo, Vazio } from "@/components/ui";
+import { Aviso, Cartao, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao } from "@/lib/auth/sessao";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { rotaOrg } from "@/lib/rotas";
+import { carregarExperiencia, carregarPecas } from "./carregar";
+import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
+import { somar, zero, type Linha, type Soma } from "./soma";
+import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados } from "./tabelas";
 
 export const metadata: Metadata = { title: "Desempenho" };
-
-interface Linha {
-  account_id: string;
-  campaign_id: string | null;
-  campaign_name: string | null;
-  adset_id: string | null;
-  adset_name: string | null;
-  ad_id: string;
-  ad_name: string | null;
-  status: string | null;
-  imagem_path: string | null;
-  gasto: number;
-  impressoes: number;
-  frequencia: number;
-  cliques_link: number;
-  visualizacoes_pagina: number;
-  leads_meta: number;
-  compras_meta: number;
-  leads: number;
-  testes: number;
-  testes_cancelados: number;
-  vendas: number;
-  receita: number;
-  vendas_pendentes: number;
-  valor_pendente: number;
-}
-
-type Soma = Pick<
-  Linha,
-  | "gasto"
-  | "impressoes"
-  | "cliques_link"
-  | "visualizacoes_pagina"
-  | "leads_meta"
-  | "compras_meta"
-  | "leads"
-  | "testes"
-  | "testes_cancelados"
-  | "vendas"
-  | "receita"
-  | "vendas_pendentes"
-  | "valor_pendente"
-> & { freqPeso: number };
-const zero = (): Soma => ({
-  gasto: 0,
-  impressoes: 0,
-  cliques_link: 0,
-  visualizacoes_pagina: 0,
-  leads_meta: 0,
-  compras_meta: 0,
-  leads: 0,
-  testes: 0,
-  testes_cancelados: 0,
-  vendas: 0,
-  receita: 0,
-  vendas_pendentes: 0,
-  valor_pendente: 0,
-  freqPeso: 0,
-});
-function somar(s: Soma, l: Linha) {
-  for (const k of [
-    "gasto",
-    "impressoes",
-    "cliques_link",
-    "visualizacoes_pagina",
-    "leads_meta",
-    "compras_meta",
-    "leads",
-    "testes",
-    "testes_cancelados",
-    "vendas",
-    "receita",
-    "vendas_pendentes",
-    "valor_pendente",
-  ] as const)
-    s[k] += Number(l[k]);
-  s.freqPeso += Number(l.frequencia) * Number(l.impressoes);
-  return s;
-}
-
-const rotuloCancelados = (n: number) => `${inteiro(n)} ${n === 1 ? "cancelado" : "cancelados"}`;
-/** Célula de testes: os que iniciaram e, embaixo, quantos desistiram antes da cobrança. */
-function Testes({ total, cancelados }: { total: number; cancelados: number }) {
-  return (
-    <>
-      {inteiro(total)}
-      {cancelados > 0 && <div className="text-xs text-ink-3">{rotuloCancelados(cancelados)}</div>}
-    </>
-  );
-}
 
 const PERIODOS = [7, 14, 30, 90];
 const dia = (offset: number, fuso: string) =>
@@ -121,6 +34,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
   const busca = await searchParams;
   const dias = PERIODOS.includes(Number(busca.dias)) ? Number(busca.dias) : 7;
   const campanha = typeof busca.campanha === "string" && /^\d+$/.test(busca.campanha) ? busca.campanha : null;
+  const aba: Aba = ABAS.includes(busca.aba as Aba) ? (busca.aba as Aba) : "geral";
   const { org, supabase } = await exigirOrganizacao(slug);
   const de = dia(dias - 1, org.fuso);
   const ate = dia(0, org.fuso);
@@ -184,10 +98,22 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
 
   const link = (extra: Record<string, string | number | null>) => {
     const q = new URLSearchParams();
-    const tudo = { dias, campanha, ...extra };
-    for (const [k, v] of Object.entries(tudo)) if (v !== null && v !== undefined && !(k === "dias" && v === 7)) q.set(k, String(v));
+    const tudo = { dias, campanha, aba: campanha && aba !== "geral" ? aba : null, ...extra };
+    for (const [k, v] of Object.entries(tudo)) if (v !== null && v !== undefined && !(k === "dias" && v === 7) && !(k === "aba" && !tudo.campanha)) q.set(k, String(v));
     return `${rotaOrg(slug, "/desempenho")}${q.size ? `?${q}` : ""}`;
   };
+  // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
+  const [pecas, experiencia] = await Promise.all([
+    campanha && aba === "anuncios"
+      ? carregarPecas(
+          supabase,
+          org.id,
+          linhas.map((l) => l.ad_id),
+          new Map(linhas.map((l) => [l.ad_id, l.imagem_path ? (urls.get(l.imagem_path) ?? null) : null])),
+        )
+      : undefined,
+    campanha && aba === "pagina" ? carregarExperiencia(supabase, org.id, campanha, de) : null,
+  ]);
   const nomeCampanha = campanha ? (campanhas.get(campanha)?.nome ?? campanha) : null;
   const semDados = !linhas.length;
 
@@ -206,42 +132,10 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
 
   // Cor fixa por anúncio: posição estável (ordem do id) dentro da campanha, não a do ranking por gasto.
   const ordemCor = new Map([...linhas].sort((a, b) => a.ad_id.localeCompare(b.ad_id)).map((l, i) => [l.ad_id, i]));
-  const roas = (receita: number, gasto: number) => (receita ? decimal(razao(receita, gasto)) : "—");
-  const destaque = "bg-accent-soft font-semibold text-ink";
   const direta = org.funil === "venda_direta";
   const comTeste = org.funil === "cadastro_teste_venda";
-  // Colunas que dependem do funil (as mesmas nas três tabelas).
-  const colunasFunil = direta ? (
-    <>
-      <th className="text-right">Compras (Meta)</th>
-      <th className="text-right">Pendentes</th>
-    </>
-  ) : (
-    <>
-      <th className="text-right">Leads (Meta)</th>
-      <th className="text-right">CPL</th>
-      <th className="text-right">Leads (sist.)</th>
-      {comTeste && <th className="text-right">Testes</th>}
-    </>
-  );
-  const celulasFunil = (s: Soma) =>
-    direta ? (
-      <>
-        <td>{inteiro(s.compras_meta)}</td>
-        <td>{inteiro(s.vendas_pendentes)}</td>
-      </>
-    ) : (
-      <>
-        <td>{inteiro(s.leads_meta)}</td>
-        <td>{moeda(razao(s.gasto, s.leads_meta), org.moeda)}</td>
-        <td>{inteiro(s.leads)}</td>
-        {comTeste && (
-          <td>
-            <Testes total={s.testes} cancelados={s.testes_cancelados} />
-          </td>
-        )}
-      </>
-    );
+  const colunasFunil = colunas(org.funil);
+  const celulasFunil = (x: Soma) => celulas(x, org.funil, org.moeda);
   const indicadorPendentes = (
     <Indicador
       rotulo="Pagamento pendente"
@@ -283,9 +177,28 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
 
       {semDados ? (
         <Vazio titulo="Sem dados no período">Confira em Sincronizações se a Meta já foi carregada, ou escolha um período maior.</Vazio>
+      ) : campanha && leitura ? (
+        <DetalheCampanha
+          aba={aba}
+          link={link}
+          rotaConfiguracoes={rotaOrg(slug, "/configuracoes")}
+          funil={org.funil}
+          moeda={org.moeda}
+          de={de}
+          linhas={linhas}
+          total={total}
+          porConjunto={porConjunto}
+          urls={urls}
+          ordemCor={ordemCor}
+          leitura={leitura}
+          pontos={pontos}
+          usarMeta={usarMeta}
+          ultimoPontoEmAndamento={atuais.at(-1)?.dia === ate}
+          pecas={pecas}
+          experiencia={experiencia}
+        />
       ) : (
         <div className="grid gap-5">
-          {leitura && <LeituraCampanha leitura={leitura} />}
           <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
             <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
             {direta ? (
@@ -369,133 +282,58 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
             </>
           )}
 
-          {!campanha ? (
-            <Cartao titulo={`Campanhas · últimos ${dias} dias`} acoes={<span className="text-sm text-ink-3">Clique numa campanha para ver os anúncios</span>} rente>
-              <Tabela>
-                <thead>
-                  <tr>
-                    <th>Campanha</th>
-                    <th className="text-right">Gasto</th>
-                    <th className="text-right">Impressões</th>
-                    <th className="text-right">Freq.</th>
-                    <th className="text-right">CTR</th>
-                    {colunasFunil}
-                    <th className="text-right">Vendas</th>
-                    <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-                    <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
+          <Cartao titulo={`Campanhas · últimos ${dias} dias`} acoes={<span className="text-sm text-ink-3">Clique numa campanha para ver os anúncios</span>} rente>
+            <Tabela>
+              <thead>
+                <tr>
+                  <th>Campanha</th>
+                  <th className="text-right">Gasto</th>
+                  <th className="text-right">Impressões</th>
+                  <th className="text-right">Freq.</th>
+                  <th className="text-right">CTR</th>
+                  {colunasFunil}
+                  <th className="text-right">Vendas</th>
+                  <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
+                  <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
+                </tr>
+              </thead>
+              <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
+                {[...campanhas]
+                  .sort(([, a], [, b]) => b.soma.gasto - a.soma.gasto)
+                  .map(([id, c]) => (
+                    <tr key={id}>
+                      <td>
+                        <Link href={link({ campanha: id })} className="font-medium text-ink hover:text-accent-text">
+                          {c.nome}
+                        </Link>
+                        <div className="text-xs text-ink-3">{c.anuncios} anúncio(s) com gasto</div>
+                      </td>
+                      <td>{moeda(c.soma.gasto, org.moeda)}</td>
+                      <td>{inteiro(c.soma.impressoes)}</td>
+                      <td>{decimal(razao(c.soma.freqPeso, c.soma.impressoes))}</td>
+                      <td>{pct(razao(c.soma.cliques_link, c.soma.impressoes), 2)}</td>
+                      {celulasFunil(c.soma)}
+                      <td>{inteiro(c.soma.vendas)}</td>
+                      <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
+                      <td className={destaque}>{roas(c.soma.receita, c.soma.gasto)}</td>
+                    </tr>
+                  ))}
+                {campanhas.size > 1 && (
+                  <tr className="font-semibold [&>td]:border-t-2 [&>td]:border-line-strong">
+                    <td>Total</td>
+                    <td>{moeda(total.gasto, org.moeda)}</td>
+                    <td>{inteiro(total.impressoes)}</td>
+                    <td>—</td>
+                    <td>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
+                    {celulasFunil(total)}
+                    <td>{inteiro(total.vendas)}</td>
+                    <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
+                    <td className={destaque}>{roas(total.receita, total.gasto)}</td>
                   </tr>
-                </thead>
-                <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
-                  {[...campanhas]
-                    .sort(([, a], [, b]) => b.soma.gasto - a.soma.gasto)
-                    .map(([id, c]) => (
-                      <tr key={id}>
-                        <td>
-                          <Link href={link({ campanha: id })} className="font-medium text-ink hover:text-accent-text">
-                            {c.nome}
-                          </Link>
-                          <div className="text-xs text-ink-3">{c.anuncios} anúncio(s) com gasto</div>
-                        </td>
-                        <td>{moeda(c.soma.gasto, org.moeda)}</td>
-                        <td>{inteiro(c.soma.impressoes)}</td>
-                        <td>{decimal(razao(c.soma.freqPeso, c.soma.impressoes))}</td>
-                        <td>{pct(razao(c.soma.cliques_link, c.soma.impressoes), 2)}</td>
-                        {celulasFunil(c.soma)}
-                        <td>{inteiro(c.soma.vendas)}</td>
-                        <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
-                        <td className={destaque}>{roas(c.soma.receita, c.soma.gasto)}</td>
-                      </tr>
-                    ))}
-                  {campanhas.size > 1 && (
-                    <tr className="font-semibold [&>td]:border-t-2 [&>td]:border-line-strong">
-                      <td>Total</td>
-                      <td>{moeda(total.gasto, org.moeda)}</td>
-                      <td>{inteiro(total.impressoes)}</td>
-                      <td>—</td>
-                      <td>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
-                      {celulasFunil(total)}
-                      <td>{inteiro(total.vendas)}</td>
-                      <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
-                      <td className={destaque}>{roas(total.receita, total.gasto)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </Tabela>
-            </Cartao>
-          ) : (
-            <>
-              {porConjunto.size > 1 && (
-                <Cartao titulo="Públicos (conjuntos)" acoes={<span className="text-sm text-ink-3">Qual público vende</span>} rente>
-                  <Tabela>
-                    <thead>
-                      <tr>
-                        <th>Conjunto</th>
-                        <th className="text-right">Gasto</th>
-                        {colunasFunil}
-                        <th className="text-right">Vendas</th>
-                        <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-                        <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
-                      </tr>
-                    </thead>
-                    <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
-                      {[...porConjunto]
-                        .sort(([, a], [, b]) => b.soma.gasto - a.soma.gasto)
-                        .map(([k, cj]) => (
-                          <tr key={k}>
-                            <td className="font-medium text-ink">{cj.nome}</td>
-                            <td>{moeda(cj.soma.gasto, org.moeda)}</td>
-                            {celulasFunil(cj.soma)}
-                            <td>{inteiro(cj.soma.vendas)}</td>
-                            <td className={destaque}>{moeda(razao(cj.soma.gasto, cj.soma.vendas), org.moeda)}</td>
-                            <td className={destaque}>{roas(cj.soma.receita, cj.soma.gasto)}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </Tabela>
-                </Cartao>
-              )}
-              <Cartao titulo="Anúncios" acoes={<span className="text-sm text-ink-3">Do cadastro à venda, por criativo</span>} rente>
-                <Tabela>
-                  <thead>
-                    <tr>
-                      <th>Anúncio</th>
-                      <th className="text-right">Gasto</th>
-                      <th className="text-right">Freq.</th>
-                      <th className="text-right">CTR</th>
-                      {colunasFunil}
-                      <th className="text-right">Vendas</th>
-                      <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-                      <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
-                    {[...linhas]
-                      .sort((a, b) => Number(b.gasto) - Number(a.gasto))
-                      .map((l) => (
-                        <tr key={l.ad_id}>
-                          <td>
-                            <div className="flex items-center gap-3">
-                              <MiniaturaCriativo src={l.imagem_path ? urls.get(l.imagem_path) : null} cor={corAnuncio(ordemCor.get(l.ad_id) ?? 0)} className="w-11" />
-                              <div className="min-w-0">
-                                <div className="font-medium text-ink">{l.ad_name ?? l.ad_id}</div>
-                                <div className="text-xs text-ink-3">{l.adset_name}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td>{moeda(Number(l.gasto), org.moeda)}</td>
-                          <td>{decimal(Number(l.frequencia))}</td>
-                          <td>{pct(razao(Number(l.cliques_link), Number(l.impressoes)), 2)}</td>
-                          {celulasFunil(somar(zero(), l))}
-                          <td>{inteiro(Number(l.vendas))}</td>
-                          <td className={destaque}>{moeda(razao(Number(l.gasto), Number(l.vendas)), org.moeda)}</td>
-                          <td className={destaque}>{roas(Number(l.receita), Number(l.gasto))}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </Tabela>
-              </Cartao>
-            </>
-          )}
+                )}
+              </tbody>
+            </Tabela>
+          </Cartao>
         </div>
       )}
     </>

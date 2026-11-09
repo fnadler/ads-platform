@@ -69,6 +69,9 @@ export interface EntradaLeitura {
 
 export type TomAchado = "agir" | "observar" | "aguardar" | "ok";
 
+/** A parte da campanha de que o achado fala (a aba em que ele aparece). "geral" fica só na visão geral. */
+export type AreaAchado = "geral" | "anuncios" | "pagina" | "vendas";
+
 /** O número que resume o achado. Com `de`, é uma mudança (antes → agora); com `fracao`, vira barra. */
 export interface Destaque {
   de?: string;
@@ -91,6 +94,9 @@ export interface Passo {
 export interface Achado {
   id: string;
   tom: TomAchado;
+  area: AreaAchado;
+  /** A etapa do caminho do anúncio ao cadastro que o achado aponta (para marcar no caminho). */
+  etapa?: Etapa;
   /** Em linguagem simples, sem jargão. */
   titulo: string;
   destaque?: Destaque;
@@ -109,6 +115,9 @@ export interface Leitura {
   diasCompletos: number;
   ultimoDiaCompleto: string | null;
   nota: string | null;
+  /** Os dias do Clarity da janela, para a aba da página. */
+  clarity: DiaClarity[];
+  clarityConectado: boolean;
 }
 
 const ORDEM: Record<TomAchado, number> = { agir: 0, observar: 1, aguardar: 2, ok: 3 };
@@ -156,8 +165,9 @@ const periodo = (j: Pick<Janela, "de" | "ate">) => (j.de === j.ate ? ddmm(j.de) 
 // ───────────────────────────── Queda ou alta de cadastros, por etapa ─────────────────────────────
 
 /** Etapas do funil: cadastros/dia = gasto/dia × exibições/real × cliques/exibição × visitas/clique × cadastros/visita. */
-type Etapa = "entrega" | "leilao" | "anuncio" | "carregamento" | "pagina";
+export type Etapa = "entrega" | "leilao" | "anuncio" | "carregamento" | "pagina";
 const ETAPAS: Etapa[] = ["entrega", "leilao", "anuncio", "carregamento", "pagina"];
+const areaDaEtapa = (k: Etapa): AreaAchado => (k === "pagina" || k === "carregamento" ? "pagina" : "anuncios");
 
 function decompor(base: Janela, rec: Janela, usarMeta: boolean) {
   const leads = (j: Janela) => (usarMeta ? j.leadsMeta : j.leads);
@@ -205,6 +215,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
       {
         id: "tendencia-amostra",
         tom: "aguardar",
+        area: "geral",
         titulo: "Ainda é cedo para comparar dias",
         destaque: { para: `${completos.length} de 4`, rotulo: "dias completos de campanha" },
         detalhe: `A comparação entre os últimos dias e os anteriores começa com 4 dias completos de veiculação. Antes disso, qualquer subida ou descida pode ser só acaso.`,
@@ -227,6 +238,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
       {
         id: "tendencia",
         tom: "ok",
+        area: "geral",
         titulo: "Cadastros no ritmo de sempre",
         destaque: destaqueLeads("neutro"),
         detalhe: `${comparacao} A diferença está dentro da variação normal de poucos dias.`,
@@ -278,6 +290,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
       {
         id: "tendencia",
         tom: "ok",
+        area: "geral",
         titulo: "Cadastros em alta",
         destaque: destaqueLeads("melhor"),
         detalhe: `${comparacao}${etapas.length ? ` O que mais ajudou: ${juntarE(etapas.map((k) => rotulos[k].toLowerCase()))}.` : ""}`,
@@ -330,6 +343,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
       {
         id: "tendencia",
         tom: "observar",
+        area: "geral",
         titulo: "Cadastros em queda",
         destaque: destaqueLeads("pior"),
         detalhe: `${comparacao} Nenhuma etapa explica a queda sozinha.`,
@@ -361,13 +375,15 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
   if (!firme) detalhe += " A diferença ainda pode ser acaso; confirme nos próximos dias.";
 
   const achados: Achado[] = [
-    { id: "tendencia", tom: firme ? t.tom : "observar", titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
+    { id: "tendencia", tom: firme ? t.tom : "observar", area: areaDaEtapa(principal), etapa: principal, titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
   ];
   for (const k of etapas.slice(1))
     if (Math.abs(contrib[k]) / total >= 0.3)
       achados.push({
         id: `tendencia-${k}`,
         tom: "observar",
+        area: areaDaEtapa(k),
+        etapa: k,
         titulo: textos[k].titulo,
         destaque: destaqueEtapa(k),
         acao: textos[k].acao,
@@ -394,6 +410,7 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
     return {
       id: "saturacao",
       tom: "agir",
+      area: "anuncios",
       titulo: "O público está cansando do anúncio",
       destaque: destaqueFreq,
       acao: "Amplie o público ou renove os anúncios.",
@@ -404,6 +421,7 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
     return {
       id: "saturacao",
       tom: "observar",
+      area: "anuncios",
       titulo: "O anúncio pode estar perdendo força",
       destaque: { de: pct(ctrB, 1), para: pct(ctrR, 1), rotulo: "das pessoas que veem o anúncio clicam", sentido: "pior" },
       acao: "Prepare variações do anúncio, caso continue caindo.",
@@ -412,6 +430,7 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
   return {
     id: "saturacao",
     tom: "ok",
+    area: "anuncios",
     titulo: "O público ainda não cansou",
     destaque: destaqueFreq,
     detalhe: `Cada pessoa vê o anúncio ${decimal(freq, 1)} vez(es) por dia, e os cliques ${ctrR >= ctrB ? "se mantêm ou sobem" : "se mantêm"}. ${cliques} Saturação aparece quando as mesmas pessoas veem o anúncio muitas vezes (2,5 ou mais por dia) e param de clicar.`,
@@ -429,6 +448,7 @@ function regraConcentracao(e: EntradaLeitura, completos: DiaCampanha[]): Achado 
   return {
     id: "concentracao",
     tom: "observar",
+    area: "anuncios",
     titulo: `A Meta apostou quase tudo em “${lider.nome}”`,
     destaque: { para: pct(fatia, 0), rotulo: "da verba foi para esse anúncio", fracao: fatia },
     acao: "Para testar outros anúncios, dê a eles verba própria.",
@@ -452,6 +472,7 @@ function regraQualidade(e: EntradaLeitura): Achado[] {
         {
           id: `qualidade-${a.ad_id}`,
           tom: chance < 0.05 ? "agir" : "observar",
+          area: "anuncios",
           titulo: `“${a.nome}” traz cadastros que não testam`,
           destaque: { para: `0 de ${inteiro(a.leads)}`, rotulo: "cadastros começaram o teste grátis", sentido: "pior" },
           acao: chance < 0.05 ? "Reduza a verba desse anúncio ou mude a promessa." : "Acompanhe mais alguns cadastros.",
@@ -482,6 +503,7 @@ function regraTestesRecentes(e: EntradaLeitura): Achado | null {
   return {
     id: "testes-recentes",
     tom: chance < 0.05 ? "agir" : "observar",
+    area: "vendas",
     titulo: `Ninguém começou o teste grátis desde ${ddmm(desde)}`,
     destaque: { para: `0 de ${inteiro(n)}`, rotulo: `cadastros desde ${ddmm(desde)} começaram o teste`, sentido: "pior" },
     acao: chance < 0.05 ? "Confira o caminho do cadastro até o pagamento." : "Acompanhe e teste o caminho do cadastro até o pagamento.",
@@ -502,6 +524,7 @@ function regraRastreio(completos: DiaCampanha[]): Achado | null {
   return {
     id: "rastreio",
     tom: "agir",
+    area: "vendas",
     titulo: "Cadastros chegando sem a origem do anúncio",
     destaque: { de: pct(rb, 0), para: pct(rr, 0), rotulo: "dos cadastros chegam com o anúncio de origem", sentido: "pior" },
     acao: "Confira o rastreio dos anúncios e do site.",
@@ -517,6 +540,7 @@ function regraMaturidade(e: EntradaLeitura): Achado | null {
       return {
         id: "maturidade",
         tom: "aguardar",
+        area: "vendas",
         titulo: "Ainda não dá para medir as vendas",
         destaque: { para: ddmm(cobrancas[0]), rotulo: `primeira cobrança dos ${plural(e.testesAtivos.length, "teste", "testes")} em andamento` },
         acao: "Até lá, acompanhe cadastros e testes.",
@@ -528,6 +552,7 @@ function regraMaturidade(e: EntradaLeitura): Achado | null {
     return {
       id: "maturidade",
       tom: "aguardar",
+      area: "vendas",
       titulo: "Poucas vendas para tirar conclusão",
       destaque: { para: `${e.vendas} de 5`, rotulo: "vendas para o custo por venda ficar confiável" },
       acao: "Use o custo por venda como direção, não como veredito.",
@@ -542,6 +567,7 @@ function regraClarity(e: EntradaLeitura): Achado | null {
       ? {
           id: "clarity",
           tom: "aguardar",
+          area: "pagina",
           titulo: "Clarity começando a medir a página",
           destaque: { para: "0 de 4", rotulo: "dias medidos para comparar" },
           detalhe: "A coleta diária roda à meia-noite e guarda o dia anterior. Com 4 dias, a leitura passa a comparar como as pessoas usam a página: até onde descem, onde clicam e se aparecem erros.",
@@ -552,6 +578,7 @@ function regraClarity(e: EntradaLeitura): Achado | null {
     return {
       id: "clarity",
       tom: "aguardar",
+      area: "pagina",
       titulo: "Clarity começando a medir a página",
       destaque: { para: `${comSessao.length} de 4`, rotulo: "dias medidos para comparar" },
       detalhe: `Com 4 dias de visitas registradas${comSessao.length ? ` (o primeiro foi ${ddmm(comSessao[0].dia)})` : ""}, a leitura passa a comparar como as pessoas usam a página: até onde descem, onde clicam e se aparecem erros.`,
@@ -565,6 +592,7 @@ function regraClarity(e: EntradaLeitura): Achado | null {
   return {
     id: "clarity",
     tom: "observar",
+    area: "pagina",
     titulo: "Ficou mais difícil usar a página",
     acao: "Veja as gravações do Clarity desses dias.",
     detalhe: `Entre ${periodo(jb)} e ${periodo(jr)}, ${juntarE(sinais)}.`,
@@ -595,5 +623,5 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
   ]
     .filter((a): a is Achado => !!a)
     .sort((a, b) => ORDEM[a.tom] - ORDEM[b.tom]);
-  return { achados, diasCompletos: completos.length, ultimoDiaCompleto: ultimo, nota };
+  return { achados, diasCompletos: completos.length, ultimoDiaCompleto: ultimo, nota, clarity: e.clarity, clarityConectado: !!e.clarityConectado || e.clarity.length > 0 };
 }

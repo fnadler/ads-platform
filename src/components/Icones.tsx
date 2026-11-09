@@ -158,3 +158,13 @@ export const IconeRelogio = (p: P) => (
     <path d="M12 7.5V12l3 2" />
   </Base>
 );
+export const IconePlay = (p: P) => (
+  <Base {...p}>
+    <path d="M7 4.5v15l12-7.5-12-7.5Z" fill="currentColor" />
+  </Base>
+);
+export const IconeAmpliar = (p: P) => (
+  <Base {...p}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </Base>
+);
