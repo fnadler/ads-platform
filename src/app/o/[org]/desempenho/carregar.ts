@@ -82,6 +82,9 @@ export interface ContextoAcoes {
   orcamento: { tipo: "total" | "diario"; valor: number; fim: string | null; gasto: number } | null;
   custoPorMil: number | null;
   anuncios: Array<{ id: string; nome: string; impressoes: number; ativo: boolean; daPlataforma: boolean }>;
+  /** Para os atalhos das sugestões. */
+  rotas: { configuracoes: string; campanhas: string; vendas: string; rastreio: string };
+  projetoClarity: string | null;
 }
 
 /** O que as ações das sugestões precisam saber: se a campanha é da plataforma, quem pode agir, verba e teto. */
@@ -91,11 +94,13 @@ export async function carregarContextoAcoes(
   campanhaId: string,
   podeEditar: boolean,
   linhas: Array<{ ad_id: string; ad_name: string | null; impressoes: number; gasto: number; status: string | null }>,
+  rotas: ContextoAcoes["rotas"],
 ): Promise<ContextoAcoes> {
-  const [{ data: campanha }, { data: config }, { data: gastos }] = await Promise.all([
+  const [{ data: campanha }, { data: config }, { data: gastos }, { data: clarity }] = await Promise.all([
     supabase.from("campanhas_assistente").select("id, nome, status, rascunho").eq("organizacao_id", org.id).eq("meta_campaign_id", campanhaId).maybeSingle(),
     supabase.from("config_publicacao").select("teto_verba_diaria").eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("meta_campanha_dia").select("gasto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
+    supabase.from("conexoes").select("config").eq("organizacao_id", org.id).eq("tipo", "clarity").eq("status", "ativa").maybeSingle(),
   ]);
   const { data: daPlataforma } = campanha
     ? await supabase
@@ -136,6 +141,8 @@ export async function carregarContextoAcoes(
         }
       : null,
     custoPorMil: impressoes ? (gastoPeriodo * 1000) / impressoes : null,
+    rotas,
+    projetoClarity: ((clarity?.config as { projeto_id?: string } | null)?.projeto_id as string) ?? null,
     anuncios: linhas.map((l) => ({ id: l.ad_id, nome: l.ad_name ?? l.ad_id, impressoes: Number(l.impressoes), ativo: l.status === "ACTIVE", daPlataforma: nossos.has(l.ad_id) })),
   };
 }

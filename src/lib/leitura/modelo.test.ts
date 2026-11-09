@@ -4,7 +4,17 @@ import { lerCampanha, type DiaCampanha, type EntradaLeitura } from "./modelo";
 // Caso real: GN | Cadastro Loja | A1 ganchos, lida em 06/11/2026 às 6h (dia em andamento).
 // A análise feita à mão concluiu: não é saturação; a queda de 04–05/11 veio da conversão na página
 // (coincidiu com a mudança da página inicial); há 5 testes cuja primeira cobrança cai em 09–10/11.
-const d = (dia: string, gasto: number, impressoes: number, frequencia: number, cliques_link: number, visualizacoes_pagina: number, leads_meta: number, leads: number, testes: number): DiaCampanha => ({
+const d = (
+  dia: string,
+  gasto: number,
+  impressoes: number,
+  frequencia: number,
+  cliques_link: number,
+  visualizacoes_pagina: number,
+  leads_meta: number,
+  leads: number,
+  testes: number,
+): DiaCampanha => ({
   dia,
   gasto,
   impressoes,
@@ -56,6 +66,7 @@ describe("lerCampanha — caso GN (06/11)", () => {
   it("aponta a página como causa da queda, com o anúncio ainda atraindo", () => {
     expect(a.tendencia.tom).toBe("agir");
     expect(a.tendencia.titulo).toBe("Menos visitantes estão se cadastrando");
+    expect(a.tendencia.atalhos).toEqual(["testar_pagina", "conectar_clarity"]);
     expect(a.tendencia.destaque).toEqual({ de: "29%", para: "19%", rotulo: "das visitas à página viram cadastro", sentido: "pior" });
     expect(a.tendencia.acao).toBeTruthy();
     expect(a.tendencia.detalhe).toMatch(/O anúncio continua atraindo/);

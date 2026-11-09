@@ -75,6 +75,12 @@ export type AreaAchado = "geral" | "anuncios" | "pagina" | "vendas";
 /** O que a plataforma consegue fazer na Meta para resolver o achado (com confirmação, em campanha que ela criou). */
 export type AcaoExecutavel = { tipo: "testar_anuncios"; anuncios: string[] } | { tipo: "pausar_anuncio"; anuncio: string } | { tipo: "ajustar_verba" };
 
+/**
+ * Atalho para investigar ou resolver dentro da plataforma (ou no Clarity): conferir a página ou o rastreio
+ * na hora, ver as gravações, conectar o Clarity, criar anúncios novos, ver os cadastros recentes.
+ */
+export type Atalho = "testar_pagina" | "conferir_rastreio" | "gravacoes_clarity" | "conectar_clarity" | "nova_campanha" | "ver_cadastros";
+
 /** O número que resume o achado. Com `de`, é uma mudança (antes → agora); com `fracao`, vira barra. */
 export interface Destaque {
   de?: string;
@@ -111,6 +117,7 @@ export interface Achado {
   /** A orientação completa, quando a ação curta não basta. */
   acaoDetalhe?: string;
   acaoExecutavel?: AcaoExecutavel;
+  atalhos?: Atalho[];
 }
 
 export interface Leitura {
@@ -172,6 +179,12 @@ const periodo = (j: Pick<Janela, "de" | "ate">) => (j.de === j.ate ? ddmm(j.de) 
 export type Etapa = "entrega" | "leilao" | "anuncio" | "carregamento" | "pagina";
 const ETAPAS: Etapa[] = ["entrega", "leilao", "anuncio", "carregamento", "pagina"];
 const areaDaEtapa = (k: Etapa): AreaAchado => (k === "pagina" || k === "carregamento" ? "pagina" : "anuncios");
+const ATALHOS_ETAPA: Partial<Record<Etapa, (clarity: boolean) => Atalho[]>> = {
+  pagina: (clarity) => ["testar_pagina", clarity ? "gravacoes_clarity" : "conectar_clarity"],
+  carregamento: () => ["testar_pagina"],
+  anuncio: () => ["nova_campanha"],
+};
+const atalhosDaEtapa = (k: Etapa, clarity: boolean) => ATALHOS_ETAPA[k]?.(clarity);
 
 function decompor(base: Janela, rec: Janela, usarMeta: boolean) {
   const leads = (j: Janela) => (usarMeta ? j.leadsMeta : j.leads);
@@ -211,6 +224,8 @@ function experienciaPagina(clarity: DiaClarity[], base: Pick<Janela, "de" | "ate
   }
   return sinais;
 }
+
+const comClarity = (e: EntradaLeitura) => !!e.clarityConectado || e.clarity.length > 0;
 
 function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
   if (e.funil === "venda_direta") return []; // sem cadastro no meio: a leitura por etapa fica para a venda
@@ -379,7 +394,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
   if (!firme) detalhe += " A diferença ainda pode ser acaso; confirme nos próximos dias.";
 
   const achados: Achado[] = [
-    { id: "tendencia", tom: firme ? t.tom : "observar", area: areaDaEtapa(principal), etapa: principal, ...(principal === "entrega" ? { acaoExecutavel: { tipo: "ajustar_verba" as const } } : {}), titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
+    { id: "tendencia", tom: firme ? t.tom : "observar", area: areaDaEtapa(principal), etapa: principal, atalhos: atalhosDaEtapa(principal, comClarity(e)), ...(principal === "entrega" ? { acaoExecutavel: { tipo: "ajustar_verba" as const } } : {}), titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
   ];
   for (const k of etapas.slice(1))
     if (Math.abs(contrib[k]) / total >= 0.3)
@@ -388,6 +403,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
         tom: "observar",
         area: areaDaEtapa(k),
         etapa: k,
+        atalhos: atalhosDaEtapa(k, comClarity(e)),
         ...(k === "entrega" ? { acaoExecutavel: { tipo: "ajustar_verba" as const } } : {}),
         titulo: textos[k].titulo,
         destaque: destaqueEtapa(k),
@@ -419,6 +435,7 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
       titulo: "O público está cansando do anúncio",
       destaque: destaqueFreq,
       acao: "Amplie o público ou renove os anúncios.",
+      atalhos: ["nova_campanha"],
       detalhe: `As mesmas pessoas estão vendo o anúncio várias vezes por dia e clicando cada vez menos. ${cliques}`,
       acaoDetalhe: "Faça isso numa campanha ou conjunto separado, para não fazer a Meta recomeçar o aprendizado da campanha atual.",
     };
@@ -430,6 +447,7 @@ function regraSaturacao(completos: DiaCampanha[]): Achado | null {
       titulo: "O anúncio pode estar perdendo força",
       destaque: { de: pct(ctrB, 1), para: pct(ctrR, 1), rotulo: "das pessoas que veem o anúncio clicam", sentido: "pior" },
       acao: "Prepare variações do anúncio, caso continue caindo.",
+      atalhos: ["nova_campanha"],
       detalhe: `Menos gente clica, mas não é repetição: cada pessoa vê o anúncio ${decimal(freq, 1)} vez(es) por dia.`,
     };
   return {
@@ -515,6 +533,7 @@ function regraTestesRecentes(e: EntradaLeitura): Achado | null {
     titulo: `Ninguém começou o teste grátis desde ${ddmm(desde)}`,
     destaque: { para: `0 de ${inteiro(n)}`, rotulo: `cadastros desde ${ddmm(desde)} começaram o teste`, sentido: "pior" },
     acao: chance < 0.05 ? "Confira o caminho do cadastro até o pagamento." : "Acompanhe e teste o caminho do cadastro até o pagamento.",
+    atalhos: ["ver_cadastros"],
     detalhe: `Antes, ${pct(p, 0)} dos cadastros começavam o teste grátis. Com ${plural(n, "cadastro novo", "cadastros novos")}, o esperado seriam ${decimal(n * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}${chance < 0.05 ? "" : ", então ainda pode ser coincidência"}.`,
     acaoDetalhe: "Teste o botão de assinatura, a página de pagamento e os e-mails depois do cadastro: algo pode ter quebrado depois do cadastro.",
   };
@@ -536,6 +555,7 @@ function regraRastreio(completos: DiaCampanha[]): Achado | null {
     titulo: "Cadastros chegando sem a origem do anúncio",
     destaque: { de: pct(rb, 0), para: pct(rr, 0), rotulo: "dos cadastros chegam com o anúncio de origem", sentido: "pior" },
     acao: "Confira o rastreio dos anúncios e do site.",
+    atalhos: ["conferir_rastreio"],
     detalhe: `Dos cadastros que a Meta conta, ${pct(rr, 0)} chegaram ao sistema com o anúncio de origem em ${periodo(rec)}; antes, ${pct(rb, 0)}. Sem a origem, as vendas desses cadastros não aparecem no anúncio certo.`,
     acaoDetalhe: "Em Rastreio, veja se os anúncios mantêm os parâmetros de URL e se o site continua enviando os cadastros.",
   };
@@ -603,6 +623,7 @@ function regraClarity(e: EntradaLeitura): Achado | null {
     area: "pagina",
     titulo: "Ficou mais difícil usar a página",
     acao: "Veja as gravações do Clarity desses dias.",
+    atalhos: ["gravacoes_clarity"],
     detalhe: `Entre ${periodo(jb)} e ${periodo(jr)}, ${juntarE(sinais)}.`,
     acaoDetalhe: "No Clarity, filtre as gravações por origem = anuncio_meta e veja onde as pessoas travam.",
   };

@@ -113,7 +113,14 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         )
       : undefined,
     campanha && aba === "pagina" ? carregarExperiencia(supabase, org.id, campanha, de) : null,
-    campanha ? carregarContextoAcoes(supabase, org, campanha, temPapel(papel, "gestor"), linhas) : undefined,
+    campanha
+      ? carregarContextoAcoes(supabase, org, campanha, temPapel(papel, "gestor"), linhas, {
+          configuracoes: rotaOrg(slug, "/configuracoes"),
+          campanhas: rotaOrg(slug, "/campanhas"),
+          vendas: rotaOrg(slug, "/vendas"),
+          rastreio: rotaOrg(slug, "/rastreio"),
+        })
+      : undefined,
   ]);
   const nomeCampanha = campanha ? (campanhas.get(campanha)?.nome ?? campanha) : null;
   const semDados = !linhas.length;

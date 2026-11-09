@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ContextoAcoes } from "@/app/o/[org]/desempenho/carregar";
 import { BotaoAcao } from "./AcaoSugestao";
+import { AtalhosSugestao } from "./AtalhosSugestao";
 import { IconeChevron, IconeSeta } from "./Icones";
 import { Caminho, Chip, NumeroDestaque, ResumoLeitura, TOM } from "./LeituraCampanha";
 import { Modal } from "./Modal";
@@ -40,6 +41,7 @@ function CartaoCompacto({ a, link, abrir, acoes }: { a: Achado; link?: { href: s
         </p>
       )}
       <AcaoDoAchado a={a} acoes={acoes} />
+      <AtalhosSugestao atalhos={a.atalhos} ctx={acoes} />
       <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 border-t border-line pt-2">
         <button type="button" onClick={abrir} className="flex min-h-10 items-center text-sm font-[550] text-accent-text hover:underline">
           Ver detalhes
@@ -148,8 +150,9 @@ export function CarrosselAchados({
               </p>
             )}
             {!!aberto.passos?.length && <Caminho passos={aberto.passos} />}
-            <div className="self-start">
+            <div className="flex flex-col gap-2 sm:max-w-xs">
               <AcaoDoAchado a={aberto} acoes={acoes} />
+              <AtalhosSugestao atalhos={aberto.atalhos} ctx={acoes} />
             </div>
             {linkDe(aberto) && (
               <Link href={linkDe(aberto)!.href} onClick={() => setAberto(null)} className="inline-flex min-h-10 items-center gap-1 self-start text-sm font-[550] text-accent-text">
