@@ -66,3 +66,76 @@ export async function carregarExperiencia(supabase: SupabaseClient, orgId: strin
     projetoClarity: ((conexao?.config as { projeto_id?: string } | null)?.projeto_id as string) ?? null,
   };
 }
+
+export interface ContextoAcoes {
+  orgId: string;
+  /** Id da campanha na Meta. */
+  campanha: string;
+  podeAgir: boolean;
+  /** Por que não dá para agir pela plataforma (quando não dá). */
+  motivo?: string;
+  moeda: string;
+  fuso: string;
+  nomeCampanha: string;
+  /** Teto de verba diária da organização (0 = sem teto). */
+  teto: number;
+  orcamento: { tipo: "total" | "diario"; valor: number; fim: string | null; gasto: number } | null;
+  custoPorMil: number | null;
+  anuncios: Array<{ id: string; nome: string; impressoes: number; ativo: boolean; daPlataforma: boolean }>;
+}
+
+/** O que as ações das sugestões precisam saber: se a campanha é da plataforma, quem pode agir, verba e teto. */
+export async function carregarContextoAcoes(
+  supabase: SupabaseClient,
+  org: { id: string; moeda: string; fuso: string },
+  campanhaId: string,
+  podeEditar: boolean,
+  linhas: Array<{ ad_id: string; ad_name: string | null; impressoes: number; gasto: number; status: string | null }>,
+): Promise<ContextoAcoes> {
+  const [{ data: campanha }, { data: config }, { data: gastos }] = await Promise.all([
+    supabase.from("campanhas_assistente").select("id, nome, status, rascunho").eq("organizacao_id", org.id).eq("meta_campaign_id", campanhaId).maybeSingle(),
+    supabase.from("config_publicacao").select("teto_verba_diaria").eq("organizacao_id", org.id).maybeSingle(),
+    supabase.from("meta_campanha_dia").select("gasto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
+  ]);
+  const { data: daPlataforma } = campanha
+    ? await supabase
+        .from("anuncios_assistente")
+        .select("meta_ad_id")
+        .eq("organizacao_id", org.id)
+        .in(
+          "meta_ad_id",
+          linhas.map((l) => l.ad_id),
+        )
+    : { data: [] };
+  const nossos = new Set((daPlataforma ?? []).map((a) => a.meta_ad_id as string));
+  const r = (campanha?.rascunho ?? {}) as { tipo_orcamento?: "total" | "diario"; verba_total?: number; verba_diaria?: number; fim?: string };
+  const impressoes = linhas.reduce((s, l) => s + Number(l.impressoes), 0);
+  const gastoPeriodo = linhas.reduce((s, l) => s + Number(l.gasto), 0);
+  const motivo = !campanha
+    ? "Esta campanha foi criada fora da plataforma: o ajuste é feito no Gerenciador de Anúncios."
+    : !podeEditar
+      ? "Só quem é gestor ou dono pode mexer na campanha."
+      : campanha.status !== "ativa" && campanha.status !== "criada"
+        ? "A campanha ainda não terminou de ser criada na Meta."
+        : undefined;
+  return {
+    orgId: org.id,
+    campanha: campanhaId,
+    podeAgir: !motivo,
+    motivo,
+    moeda: org.moeda,
+    fuso: org.fuso,
+    nomeCampanha: (campanha?.nome as string) ?? "",
+    teto: Number(config?.teto_verba_diaria) || 0,
+    orcamento: campanha
+      ? {
+          tipo: r.tipo_orcamento === "total" ? "total" : "diario",
+          valor: Number(r.tipo_orcamento === "total" ? r.verba_total : r.verba_diaria) || 0,
+          fim: r.fim ?? null,
+          gasto: (gastos ?? []).reduce((s, g) => s + Number(g.gasto), 0),
+        }
+      : null,
+    custoPorMil: impressoes ? (gastoPeriodo * 1000) / impressoes : null,
+    anuncios: linhas.map((l) => ({ id: l.ad_id, nome: l.ad_name ?? l.ad_id, impressoes: Number(l.impressoes), ativo: l.status === "ACTIVE", daPlataforma: nossos.has(l.ad_id) })),
+  };
+}

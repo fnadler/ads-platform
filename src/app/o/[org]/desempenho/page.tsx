@@ -3,11 +3,11 @@ import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeVoltar } from "@/components/Icones";
 import { Aviso, Cartao, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
-import { exigirOrganizacao } from "@/lib/auth/sessao";
+import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { rotaOrg } from "@/lib/rotas";
-import { carregarExperiencia, carregarPecas } from "./carregar";
+import { carregarContextoAcoes, carregarExperiencia, carregarPecas } from "./carregar";
 import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
 import { somar, zero, type Linha, type Soma } from "./soma";
 import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados } from "./tabelas";
@@ -35,7 +35,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
   const dias = PERIODOS.includes(Number(busca.dias)) ? Number(busca.dias) : 7;
   const campanha = typeof busca.campanha === "string" && /^\d+$/.test(busca.campanha) ? busca.campanha : null;
   const aba: Aba = ABAS.includes(busca.aba as Aba) ? (busca.aba as Aba) : "geral";
-  const { org, supabase } = await exigirOrganizacao(slug);
+  const { org, supabase, papel } = await exigirOrganizacao(slug);
   const de = dia(dias - 1, org.fuso);
   const ate = dia(0, org.fuso);
 
@@ -103,7 +103,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
     return `${rotaOrg(slug, "/desempenho")}${q.size ? `?${q}` : ""}`;
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
-  const [pecas, experiencia] = await Promise.all([
+  const [pecas, experiencia, acoes] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -113,6 +113,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         )
       : undefined,
     campanha && aba === "pagina" ? carregarExperiencia(supabase, org.id, campanha, de) : null,
+    campanha ? carregarContextoAcoes(supabase, org, campanha, temPapel(papel, "gestor"), linhas) : undefined,
   ]);
   const nomeCampanha = campanha ? (campanhas.get(campanha)?.nome ?? campanha) : null;
   const semDados = !linhas.length;
@@ -196,6 +197,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
           ultimoPontoEmAndamento={atuais.at(-1)?.dia === ate}
           pecas={pecas}
           experiencia={experiencia}
+          acoes={acoes}
         />
       ) : (
         <div className="grid gap-5">

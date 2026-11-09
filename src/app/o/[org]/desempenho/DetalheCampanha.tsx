@@ -6,7 +6,8 @@ import { CarrosselAchados, type LinksArea } from "@/components/CarrosselAchados"
 import { MapaRolagem, VisitasPorAparelho } from "@/components/MapaRolagem";
 import { VisualizarAnuncio, type PecaAnuncio } from "@/components/VisualizarAnuncio";
 import { APARELHOS } from "@/lib/clarity/campanha";
-import type { ExperienciaPagina } from "./carregar";
+import { BotaoAcao } from "@/components/AcaoSugestao";
+import type { ContextoAcoes, ExperienciaPagina } from "./carregar";
 import { Aviso, BotaoLink, Cartao, corAnuncio, Indicador, Indicadores, Tabela, Vazio } from "@/components/ui";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
@@ -55,6 +56,8 @@ export interface DadosDetalhe {
   pecas?: Map<string, PecaAnuncio>;
   /** Clarity das visitas da campanha (só na aba Página). */
   experiencia?: ExperienciaPagina | null;
+  /** O que as sugestões e os anúncios podem fazer na Meta. */
+  acoes?: ContextoAcoes;
 }
 
 export function DetalheCampanha(d: DadosDetalhe) {
@@ -122,8 +125,8 @@ function TodosNumeros({ titulo = "Ver todos os números", children }: { titulo?:
 const achadosDaArea = (d: DadosDetalhe, area: AreaAchado) => d.leitura.achados.filter((a) => a.area === area);
 
 /** Sugestões da aba, logo abaixo dos números; sem nenhuma, uma linha dizendo que está tudo em dia. */
-function SugestoesDaArea({ achados, padrao }: { achados: Achado[]; padrao: string }) {
-  return achados.length ? <CarrosselAchados achados={achados} /> : <Aviso tom="ok">{padrao}</Aviso>;
+function SugestoesDaArea({ achados, padrao, acoes }: { achados: Achado[]; padrao: string; acoes?: ContextoAcoes }) {
+  return achados.length ? <CarrosselAchados achados={achados} acoes={acoes} /> : <Aviso tom="ok">{padrao}</Aviso>;
 }
 
 // ───────────────────────────── Visão geral ─────────────────────────────
@@ -309,7 +312,7 @@ function AbaGeral(d: DadosDetalhe) {
       </Indicadores>
 
       {achados.length ? (
-        <CarrosselAchados achados={achados} titulo="Sugestões" nota={nota} links={links} />
+        <CarrosselAchados achados={achados} titulo="Sugestões" nota={nota} links={links} acoes={d.acoes} />
       ) : (
         <Aviso tom="ok">A campanha está rodando sem nada fora do normal.</Aviso>
       )}
@@ -355,60 +358,91 @@ const TOM_SELO = {
   erro: "border-err-line bg-err-soft text-err",
 };
 
+/** Estados da Meta em que o anúncio não está veiculando (ele, o conjunto ou a campanha parados, ou já terminado). */
+const PARADO: Record<string, string> = {
+  PAUSED: "Pausado",
+  ADSET_PAUSED: "Pausado (conjunto pausado)",
+  CAMPAIGN_PAUSED: "Pausado (campanha pausada)",
+  EXPIRED: "Encerrado",
+  ARCHIVED: "Arquivado",
+  DELETED: "Excluído",
+};
+
 function CartaoAnuncio({ l, d, selo, fatia }: { l: Linha; d: DadosDetalhe; selo?: Selo; fatia: number }) {
   const direta = d.funil === "venda_direta";
   const resultado = Number(direta ? l.compras_meta : l.leads_meta);
+  const parado = l.status ? PARADO[l.status] : undefined;
   return (
-    <article className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4 shadow-card">
-      <div className="flex gap-3">
-        <VisualizarAnuncio
-          peca={d.pecas?.get(l.ad_id) ?? { nome: l.ad_name ?? l.ad_id, tipo: "imagem", miniatura: l.imagem_path ? d.urls.get(l.imagem_path) : null }}
-          cor={corAnuncio(d.ordemCor.get(l.ad_id) ?? 0)}
-          className="w-16"
-        />
-        <div className="flex min-w-0 flex-col items-start gap-1.5">
-          <h3 className="text-sm font-[600] leading-snug text-ink">{l.ad_name ?? l.ad_id}</h3>
-          <span className="line-clamp-2 text-xs text-ink-3">{l.adset_name}</span>
-          {selo && <span className={`inline-flex min-h-6 items-center rounded-full border px-2.5 text-xs font-medium ${TOM_SELO[selo.tom]}`}>{selo.texto}</span>}
+    <article className={`relative flex flex-col gap-4 rounded-lg border p-4 ${parado ? "border-dashed border-line-strong bg-surface-2" : "border-line bg-surface shadow-card"}`}>
+      {parado && (
+        <span className="inline-flex h-6 items-center gap-1.5 self-start rounded-full border border-line-strong bg-sunken px-2.5 text-xs font-[600] text-ink-2">
+          <span className="text-[10px] leading-none">Ⅱ</span> {parado}
+        </span>
+      )}
+      {/* Em tons de cinza quando parado: os números continuam lá, mas sem a cor de quem está no ar. */}
+      <div className={`flex flex-col gap-4 ${parado ? "opacity-60 grayscale" : ""}`}>
+        <div className="flex gap-3">
+          <VisualizarAnuncio
+            peca={d.pecas?.get(l.ad_id) ?? { nome: l.ad_name ?? l.ad_id, tipo: "imagem", miniatura: l.imagem_path ? d.urls.get(l.imagem_path) : null }}
+            cor={corAnuncio(d.ordemCor.get(l.ad_id) ?? 0)}
+            className="w-16"
+          />
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            <h3 className="text-sm font-[600] leading-snug text-ink">{l.ad_name ?? l.ad_id}</h3>
+            <span className="line-clamp-2 text-xs text-ink-3">{l.adset_name}</span>
+            {selo && <span className={`inline-flex min-h-6 items-center rounded-full border px-2.5 text-xs font-medium ${TOM_SELO[selo.tom]}`}>{selo.texto}</span>}
+          </div>
         </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">Da verba</span>
+            <span className="font-[600] tabular-nums text-ink">
+              {pct(fatia, 0)} <span className="font-normal text-ink-3">· {moeda(Number(l.gasto), d.moeda)}</span>
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-sunken" role="presentation">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.round(fatia * 100)}%`,
+                background: corAnuncio(d.ordemCor.get(l.ad_id) ?? 0),
+              }}
+            />
+          </div>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+          <div>
+            <dt className="text-xs text-ink-3">{direta ? "Compras (Meta)" : "Cadastros"}</dt>
+            <dd className="font-[600] tabular-nums text-ink">{inteiro(resultado)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-ink-3">{direta ? "Custo por compra" : "Custo por cadastro"}</dt>
+            <dd className="font-[600] tabular-nums text-ink">{moeda(razao(Number(l.gasto), resultado), d.moeda)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-ink-3">De quem vê, clicam</dt>
+            <dd className="font-[600] tabular-nums text-ink">{pct(razao(Number(l.cliques_link), Number(l.impressoes)), 1)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-ink-3">{d.funil === "cadastro_teste_venda" ? "Testes · vendas" : "Vendas"}</dt>
+            <dd className="font-[600] tabular-nums text-ink">
+              {d.funil === "cadastro_teste_venda" ? `${inteiro(Number(l.testes))} · ${inteiro(Number(l.vendas))}` : inteiro(Number(l.vendas))}
+            </dd>
+          </div>
+        </dl>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-baseline justify-between gap-2 text-sm">
-          <span className="text-ink-2">Da verba</span>
-          <span className="font-[600] tabular-nums text-ink">
-            {pct(fatia, 0)} <span className="font-normal text-ink-3">· {moeda(Number(l.gasto), d.moeda)}</span>
-          </span>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-sunken" role="presentation">
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: `${Math.round(fatia * 100)}%`,
-              background: corAnuncio(d.ordemCor.get(l.ad_id) ?? 0),
-            }}
+      {d.acoes?.podeAgir && d.acoes.anuncios.find((a) => a.id === l.ad_id)?.daPlataforma && (l.status === "ACTIVE" || l.status === "PAUSED") && (
+        <div className="-mb-1 flex items-center justify-between gap-2 border-t border-line pt-2">
+          <span className={`text-xs font-medium ${l.status === "ACTIVE" ? "text-ok" : "text-ink-3"}`}>{l.status === "ACTIVE" ? "No ar" : "Fora do ar"}</span>
+          <BotaoAcao
+            acao={l.status === "ACTIVE" ? { tipo: "pausar_anuncio", anuncio: l.ad_id } : { tipo: "reativar_anuncio", anuncio: l.ad_id }}
+            ctx={d.acoes}
+            variante={l.status === "ACTIVE" ? "fantasma" : "secundario"}
+            className="min-h-10 px-3"
+            rotulo={l.status === "ACTIVE" ? "Pausar" : "Reativar"}
           />
         </div>
-      </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-        <div>
-          <dt className="text-xs text-ink-3">{direta ? "Compras (Meta)" : "Cadastros"}</dt>
-          <dd className="font-[600] tabular-nums text-ink">{inteiro(resultado)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-3">{direta ? "Custo por compra" : "Custo por cadastro"}</dt>
-          <dd className="font-[600] tabular-nums text-ink">{moeda(razao(Number(l.gasto), resultado), d.moeda)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-3">De quem vê, clicam</dt>
-          <dd className="font-[600] tabular-nums text-ink">{pct(razao(Number(l.cliques_link), Number(l.impressoes)), 1)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-ink-3">{d.funil === "cadastro_teste_venda" ? "Testes · vendas" : "Vendas"}</dt>
-          <dd className="font-[600] tabular-nums text-ink">
-            {d.funil === "cadastro_teste_venda" ? `${inteiro(Number(l.testes))} · ${inteiro(Number(l.vendas))}` : inteiro(Number(l.vendas))}
-          </dd>
-        </div>
-      </dl>
+      )}
     </article>
   );
 }
@@ -429,7 +463,7 @@ function AbaAnuncios(d: DadosDetalhe) {
         <Indicador rotulo="Custo para aparecer mil vezes" valor={moeda(razao(t.gasto * 1000, t.impressoes), d.moeda)} detalhe="sobe quando o leilão fica mais disputado" />
         <Indicador rotulo="Vezes que cada pessoa viu" valor={`${decimal(razao(t.freqPeso, t.impressoes), 1)}×`} detalhe="em média, no período" />
       </Indicadores>
-      <SugestoesDaArea achados={achados} padrao="Os anúncios estão entregando e atraindo cliques normalmente" />
+      <SugestoesDaArea achados={achados} acoes={d.acoes} padrao="Os anúncios estão entregando e atraindo cliques normalmente" />
 
       <Secao titulo="Cada anúncio" acoes={<span className="text-sm text-ink-3">Do que levou mais verba ao que levou menos</span>}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -545,7 +579,7 @@ function AbaPagina(d: DadosDetalhe) {
           />
         )}
       </Indicadores>
-      <SugestoesDaArea achados={achados} padrao="A página está abrindo e convertendo as visitas como antes" />
+      <SugestoesDaArea achados={achados} acoes={d.acoes} padrao="A página está abrindo e convertendo as visitas como antes" />
 
       <Secao titulo="Como as visitas da campanha usam a página">
         {!d.leitura.clarityConectado ? (
@@ -705,7 +739,11 @@ function AbaVendas(d: DadosDetalhe) {
           destaque
         />
       </Indicadores>
-      <SugestoesDaArea achados={achados} padrao={direta ? "As vendas estão chegando com o anúncio de origem" : "Cadastros, testes e vendas chegando como esperado"} />
+      <SugestoesDaArea
+        achados={achados}
+        acoes={d.acoes}
+        padrao={direta ? "As vendas estão chegando com o anúncio de origem" : "Cadastros, testes e vendas chegando como esperado"}
+      />
 
       {!direta && (
         <Cartao>

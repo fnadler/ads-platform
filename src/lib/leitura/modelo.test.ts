@@ -105,6 +105,7 @@ describe("lerCampanha — caso GN (06/11)", () => {
   it("nota a concentração no B Gaveta e os anúncios sem amostra", () => {
     expect(a.concentracao.destaque).toMatchObject({ para: "73%" });
     expect(a.concentracao.detalhe).toMatch(/“A1 \| A repetida” e “A1 \| C Digitando”/);
+    expect(a.concentracao.acaoExecutavel).toEqual({ tipo: "testar_anuncios", anuncios: ["a", "c"] });
   });
 
   it("manda aguardar as cobranças de 09 e 10/11 para julgar custo por venda", () => {

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { ContextoAcoes } from "@/app/o/[org]/desempenho/carregar";
+import { BotaoAcao } from "./AcaoSugestao";
 import { IconeChevron, IconeSeta } from "./Icones";
 import { Caminho, Chip, NumeroDestaque, ResumoLeitura, TOM } from "./LeituraCampanha";
 import { Modal } from "./Modal";
@@ -14,7 +16,7 @@ export type LinksArea = Partial<Record<AreaAchado, { href: string; rotulo: strin
 
 const BORDA = { agir: "border-t-err", observar: "border-t-warn", aguardar: "border-t-accent", ok: "border-t-ok" } as const;
 
-function CartaoCompacto({ a, link, abrir }: { a: Achado; link?: { href: string; rotulo: string }; abrir: () => void }) {
+function CartaoCompacto({ a, link, abrir, acoes }: { a: Achado; link?: { href: string; rotulo: string }; abrir: () => void; acoes?: ContextoAcoes }) {
   const corPara = a.destaque?.sentido === "pior" ? "text-err" : a.destaque?.sentido === "melhor" ? "text-ok" : "text-ink";
   return (
     <article className={`flex w-[272px] shrink-0 snap-start flex-col gap-3 rounded-lg border border-t-[3px] border-line bg-surface p-4 shadow-card sm:w-[296px] ${BORDA[a.tom]}`}>
@@ -37,6 +39,7 @@ function CartaoCompacto({ a, link, abrir }: { a: Achado; link?: { href: string; 
           {a.acao}
         </p>
       )}
+      <AcaoDoAchado a={a} acoes={acoes} />
       <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 border-t border-line pt-2">
         <button type="button" onClick={abrir} className="flex min-h-10 items-center text-sm font-[550] text-accent-text hover:underline">
           Ver detalhes
@@ -51,7 +54,26 @@ function CartaoCompacto({ a, link, abrir }: { a: Achado; link?: { href: string; 
   );
 }
 
-export function CarrosselAchados({ achados, titulo = "Sugestões", nota, links }: { achados: Achado[]; titulo?: string; nota?: string | null; links?: LinksArea }) {
+/** O botão que resolve a sugestão na Meta; sem permissão (ou campanha de fora), o motivo em uma linha. */
+function AcaoDoAchado({ a, acoes }: { a: Achado; acoes?: ContextoAcoes }) {
+  if (!a.acaoExecutavel || !acoes) return null;
+  if (!acoes.podeAgir) return acoes.motivo ? <p className="text-xs text-ink-3">{acoes.motivo}</p> : null;
+  return <BotaoAcao acao={a.acaoExecutavel} ctx={acoes} className="w-full" />;
+}
+
+export function CarrosselAchados({
+  achados,
+  titulo = "Sugestões",
+  nota,
+  links,
+  acoes,
+}: {
+  achados: Achado[];
+  titulo?: string;
+  nota?: string | null;
+  links?: LinksArea;
+  acoes?: ContextoAcoes;
+}) {
   const trilho = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState<Achado | null>(null);
   const [pode, setPode] = useState({ voltar: false, avancar: false });
@@ -101,7 +123,7 @@ export function CarrosselAchados({ achados, titulo = "Sugestões", nota, links }
       </div>
       <div ref={trilho} className="-mx-1 flex snap-x snap-mandatory scroll-px-1 gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
         {achados.map((a) => (
-          <CartaoCompacto key={a.id} a={a} link={linkDe(a)} abrir={() => setAberto(a)} />
+          <CartaoCompacto key={a.id} a={a} link={linkDe(a)} abrir={() => setAberto(a)} acoes={acoes} />
         ))}
       </div>
 
@@ -126,6 +148,9 @@ export function CarrosselAchados({ achados, titulo = "Sugestões", nota, links }
               </p>
             )}
             {!!aberto.passos?.length && <Caminho passos={aberto.passos} />}
+            <div className="self-start">
+              <AcaoDoAchado a={aberto} acoes={acoes} />
+            </div>
             {linkDe(aberto) && (
               <Link href={linkDe(aberto)!.href} onClick={() => setAberto(null)} className="inline-flex min-h-10 items-center gap-1 self-start text-sm font-[550] text-accent-text">
                 {linkDe(aberto)!.rotulo} <IconeSeta tamanho={14} />

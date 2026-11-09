@@ -72,6 +72,9 @@ export type TomAchado = "agir" | "observar" | "aguardar" | "ok";
 /** A parte da campanha de que o achado fala (a aba em que ele aparece). "geral" fica só na visão geral. */
 export type AreaAchado = "geral" | "anuncios" | "pagina" | "vendas";
 
+/** O que a plataforma consegue fazer na Meta para resolver o achado (com confirmação, em campanha que ela criou). */
+export type AcaoExecutavel = { tipo: "testar_anuncios"; anuncios: string[] } | { tipo: "pausar_anuncio"; anuncio: string } | { tipo: "ajustar_verba" };
+
 /** O número que resume o achado. Com `de`, é uma mudança (antes → agora); com `fracao`, vira barra. */
 export interface Destaque {
   de?: string;
@@ -107,6 +110,7 @@ export interface Achado {
   passos?: Passo[];
   /** A orientação completa, quando a ação curta não basta. */
   acaoDetalhe?: string;
+  acaoExecutavel?: AcaoExecutavel;
 }
 
 export interface Leitura {
@@ -375,7 +379,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
   if (!firme) detalhe += " A diferença ainda pode ser acaso; confirme nos próximos dias.";
 
   const achados: Achado[] = [
-    { id: "tendencia", tom: firme ? t.tom : "observar", area: areaDaEtapa(principal), etapa: principal, titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
+    { id: "tendencia", tom: firme ? t.tom : "observar", area: areaDaEtapa(principal), etapa: principal, ...(principal === "entrega" ? { acaoExecutavel: { tipo: "ajustar_verba" as const } } : {}), titulo: t.titulo, destaque: destaqueEtapa(principal), acao: t.acao, detalhe, passos, acaoDetalhe: t.acaoDetalhe },
   ];
   for (const k of etapas.slice(1))
     if (Math.abs(contrib[k]) / total >= 0.3)
@@ -384,6 +388,7 @@ function regraTendencia(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
         tom: "observar",
         area: areaDaEtapa(k),
         etapa: k,
+        ...(k === "entrega" ? { acaoExecutavel: { tipo: "ajustar_verba" as const } } : {}),
         titulo: textos[k].titulo,
         destaque: destaqueEtapa(k),
         acao: textos[k].acao,
@@ -454,6 +459,8 @@ function regraConcentracao(e: EntradaLeitura, completos: DiaCampanha[]): Achado 
     acao: "Para testar outros anúncios, dê a eles verba própria.",
     detalhe: `A Meta coloca a verba no anúncio que parece melhor no começo.${poucos.length ? ` ${juntarE(poucos.map((a) => `“${a.nome}”`))} ${poucos.length === 1 ? "apareceu" : "apareceram"} menos de mil vezes: ainda não dá para saber se ${poucos.length === 1 ? "funciona" : "funcionam"}.` : ""}`,
     acaoDetalhe: "Coloque os anúncios que quer testar numa campanha ou conjunto separado, com verba própria.",
+    // Testa os que quase não apareceram; se todos apareceram o bastante, os que não são o líder.
+    acaoExecutavel: { tipo: "testar_anuncios", anuncios: (poucos.length ? poucos : comGasto.slice(1)).map((a) => a.ad_id) },
   };
 }
 
@@ -478,6 +485,7 @@ function regraQualidade(e: EntradaLeitura): Achado[] {
           acao: chance < 0.05 ? "Reduza a verba desse anúncio ou mude a promessa." : "Acompanhe mais alguns cadastros.",
           detalhe: `Na campanha, ${pct(p, 0)} dos cadastros começam o teste grátis; nesse anúncio, nenhum. O esperado seriam ${decimal(a.leads * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}.`,
           acaoDetalhe: chance < 0.05 ? "Ele atrai gente que se cadastra sem intenção de usar." : undefined,
+          acaoExecutavel: chance < 0.05 ? { tipo: "pausar_anuncio" as const, anuncio: a.ad_id } : undefined,
         } satisfies Achado,
       ];
     });

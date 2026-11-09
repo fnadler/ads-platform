@@ -2,9 +2,10 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ErroLimiteMeta, ErroMeta } from "./meta";
 
-// Escrita na Marketing API (assistente de campanhas). Só o necessário para CRIAR objetos novos e ativar os
-// que o próprio sistema criou — nada de editar, pausar ou apagar o que já existe na conta. Toda chamada
-// de escrita é registrada em operacoes_meta (sem o token). Erros da Meta viram ErroMeta com a mensagem
+// Escrita na Marketing API (assistente de campanhas). Cria objetos novos e, nos que o próprio sistema
+// criou, ativa, pausa e muda a verba — quem chama confere antes que o objeto é da plataforma (está nas
+// tabelas do assistente). Nada de apagar, nem de mexer no que foi criado fora dela. Toda chamada de
+// escrita é registrada em operacoes_meta (sem o token). Erros da Meta viram ErroMeta com a mensagem
 // para o usuário (error_user_title/error_user_msg) quando ela vem.
 
 const API = "https://graph.facebook.com";
@@ -122,6 +123,16 @@ export class ClienteMetaEscrita {
   /** Ativa um objeto que o sistema criou (campanha, conjunto ou anúncio). */
   async ativar(objetoId: string) {
     return this.post<{ success?: boolean }>(objetoId, { status: "ACTIVE" });
+  }
+
+  /** Pausa um objeto que o sistema criou. */
+  async pausar(objetoId: string) {
+    return this.post<{ success?: boolean }>(objetoId, { status: "PAUSED" });
+  }
+
+  /** Muda campos de um objeto que o sistema criou (ex.: daily_budget, lifetime_budget). */
+  async atualizar(objetoId: string, campos: Record<string, unknown>) {
+    return this.post<{ success?: boolean }>(objetoId, campos);
   }
 
   /** Cria um público personalizado (lista de clientes, visitantes do site ou semelhante). */
