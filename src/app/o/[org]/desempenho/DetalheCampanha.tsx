@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeChevron, IconeExclamacao, IconeExterno, IconeSeta, IconeX } from "@/components/Icones";
 import { CarrosselAchados, type LinksArea } from "@/components/CarrosselAchados";
-import { MapaRolagem, VisitasPorAparelho } from "@/components/MapaRolagem";
+import { MapaRolagem, VisitasPorAparelho, type CapturaPagina } from "@/components/MapaRolagem";
+import { VelocidadePagina as SecaoVelocidade } from "@/components/VelocidadePagina";
+import { BlocoGrupos, destaquesGrupos, nomeNavegador, quemNoNavegador, resumoApps, SinaisProblema, TabelaGrupos, type LinhaGrupo } from "@/components/OrigemVisitas";
 import { VisualizarAnuncio, type PecaAnuncio } from "@/components/VisualizarAnuncio";
-import { APARELHOS } from "@/lib/clarity/campanha";
+import { APARELHOS, caminho } from "@/lib/clarity/campanha";
 import { BotaoAcao } from "@/components/AcaoSugestao";
-import type { ContextoAcoes, ExperienciaPagina } from "./carregar";
+import type { ContextoAcoes, ExperienciaPagina, VelocidadePagina } from "./carregar";
 import { Aviso, BotaoLink, Cartao, corAnuncio, Indicador, Indicadores, Tabela, Vazio } from "@/components/ui";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
@@ -56,6 +58,8 @@ export interface DadosDetalhe {
   pecas?: Map<string, PecaAnuncio>;
   /** Clarity das visitas da campanha (só na aba Página). */
   experiencia?: ExperienciaPagina | null;
+  /** Último teste de velocidade da página de destino (só na aba Página). */
+  velocidade?: VelocidadePagina | null;
   /** O que as sugestões e os anúncios podem fazer na Meta. */
   acoes?: ContextoAcoes;
 }
@@ -585,6 +589,12 @@ function AbaPagina(d: DadosDetalhe) {
   const suficientes = comVisitas.filter((a) => exp!.porAparelho[a]!.sessoes >= 10);
   const comMapa = suficientes.length ? suficientes : comVisitas.slice(0, 1);
   const poucos = comVisitas.filter((a) => !comMapa.includes(a));
+  // A captura do teste de velocidade entra no mapa do celular quando é da mesma página que as visitas.
+  const v = d.velocidade;
+  const captura: CapturaPagina | null =
+    v?.captura && v.teste?.pagina && (!exp?.paginas[0] || caminho(exp.paginas[0].url) === caminho(v.teste.url))
+      ? { url: v.captura, altura: v.teste.pagina.altura, tela: v.teste.tela.altura }
+      : null;
   return (
     <>
       <Indicadores className="grid-cols-1 sm:grid-cols-3">
@@ -602,6 +612,12 @@ function AbaPagina(d: DadosDetalhe) {
         )}
       </Indicadores>
       <SugestoesDaArea achados={achados} acoes={d.acoes} padrao="A página está abrindo e convertendo as visitas como antes" />
+
+      {v && (
+        <Secao titulo="Velocidade no celular">
+          <SecaoVelocidade v={v} acoes={d.acoes ? { orgId: d.acoes.orgId, campanha: d.acoes.campanha } : undefined} projetoClarity={d.experiencia?.projetoClarity ?? d.acoes?.projetoClarity} />
+        </Secao>
+      )}
 
       <Secao titulo="Como as visitas da campanha usam a página">
         {!d.leitura.clarityConectado ? (
@@ -629,41 +645,42 @@ function AbaPagina(d: DadosDetalhe) {
                 <VisitasPorAparelho porAparelho={exp.porAparelho} />
                 <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
                   {comMapa.map((a) => (
-                    <MapaRolagem key={a} aparelho={a} e={exp.porAparelho[a]!} />
+                    <MapaRolagem key={a} aparelho={a} e={exp.porAparelho[a]!} captura={a === "Mobile" ? captura : null} />
                   ))}
-                  <div className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-5 shadow-card">
-                    <h3 className="text-base font-[600] text-ink">Mapa de cliques</h3>
-                    <p className="max-w-3xl text-sm text-ink-2">
-                      O Clarity não entrega o mapa de cliques para outros sistemas, só no painel dele. Lá, abra os mapas de calor, escolha a página e alterne entre Celular e
-                      Computador para ver onde as pessoas clicam e até onde descem. As gravações mostram visitas inteiras; filtre por origem = anuncio_meta.
-                    </p>
-                    {projeto && (
-                      <div className="flex flex-wrap gap-2">
-                        <a
-                          href={`https://clarity.microsoft.com/projects/view/${projeto}/heatmaps`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
-                        >
-                          Abrir mapas de calor <IconeExterno tamanho={15} />
-                        </a>
-                        <a
-                          href={`https://clarity.microsoft.com/projects/view/${projeto}/impressions`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
-                        >
-                          Ver gravações <IconeExterno tamanho={15} />
-                        </a>
-                      </div>
-                    )}
-                  </div>
                 </div>
                 {poucos.length > 0 && (
                   <p className="text-xs text-ink-3">
-                    {juntarNomes(poucos.map((a) => `${NOME_APARELHO[a]} (${inteiro(exp.porAparelho[a]!.sessoes)})`))}: poucas visitas para desenhar o mapa de rolagem.
+                    {juntarNomes(poucos.map((a) => `${NOME_APARELHO[a]} (${inteiro(exp.porAparelho[a]!.sessoes)})`))}: poucas visitas para desenhar a rolagem.
                   </p>
                 )}
+                {exp.geral && <SinaisProblema s={exp.geral} gravacoes={projeto ? `https://clarity.microsoft.com/projects/view/${projeto}/impressions` : null} />}
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-5 shadow-card">
+                  <h3 className="text-base font-[600] text-ink">Mapa de cliques</h3>
+                  <p className="max-w-3xl text-sm text-ink-2">
+                    O Clarity não entrega o mapa de cliques para outros sistemas, só no painel dele. Lá, abra os mapas de calor, escolha a página e alterne entre Celular e
+                    Computador para ver onde as pessoas clicam e até onde descem. As gravações mostram visitas inteiras; filtre por origem = anuncio_meta.
+                  </p>
+                  {projeto && (
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={`https://clarity.microsoft.com/projects/view/${projeto}/heatmaps`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
+                      >
+                        Abrir mapas de calor <IconeExterno tamanho={15} />
+                      </a>
+                      <a
+                        href={`https://clarity.microsoft.com/projects/view/${projeto}/impressions`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
+                      >
+                        Ver gravações <IconeExterno tamanho={15} />
+                      </a>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <Aviso>Ainda não há visitas desta campanha nas coletas do Clarity do período. Abaixo, os números do site todo.</Aviso>
@@ -717,9 +734,73 @@ function AbaPagina(d: DadosDetalhe) {
           </>
         )}
       </Secao>
+      {exp && <SecaoOrigens d={d} exp={exp} />}
     </>
   );
 }
+
+/** De onde vêm as visitas da campanha: por anúncio, por navegador e comparadas com o resto do site. */
+function SecaoOrigens({ d, exp }: { d: DadosDetalhe; exp: ExperienciaPagina }) {
+  const nomes = new Map(d.linhas.map((l) => [l.ad_id, l.ad_name]));
+  const anuncios: LinhaGrupo[] = exp.porAnuncio.map((g) => {
+    const nome = nomes.get(g.chave) ?? g.rotulo ?? `Anúncio ${g.chave}`;
+    return { chave: g.chave, nome, quem: `quem chega pelo anúncio “${nome}”`, href: d.link({ aba: "anuncios" }), s: g };
+  });
+  const navegadores: LinhaGrupo[] = exp.porNavegador.map((g) => ({ chave: g.chave, nome: nomeNavegador(g.chave), quem: quemNoNavegador(g.chave), s: g }));
+  const c = exp.comparacao;
+  const comparacao: LinhaGrupo[] = c
+    ? [
+        { chave: "_campanha", nome: "Desta campanha", quem: "esta campanha", referencia: true, s: c.estaCampanha },
+        ...(c.outrasCampanhas ? [{ chave: "_outras", nome: "De outras campanhas", quem: "outras campanhas", s: c.outrasCampanhas }] : []),
+        ...(c.semAnuncio ? [{ chave: "_sem", nome: "Sem anúncio", quem: "visitas sem anúncio", s: c.semAnuncio }] : []),
+      ]
+    : [];
+  const parcialNavegador = exp.diasComNavegador.length > 0 && exp.diasComNavegador.length < exp.dias.length;
+  return (
+    <Secao titulo="De onde vêm as visitas">
+      {anuncios.length > 0 && (
+        <BlocoGrupos
+          titulo="Por anúncio"
+          descricao="Qual anúncio traz gente que lê a página e qual traz clique que não fica."
+          destaques={destaquesGrupos(anuncios, exp.geral)}
+        >
+          <TabelaGrupos rotuloColuna="Anúncio" linhas={anuncios} />
+        </BlocoGrupos>
+      )}
+      <BlocoGrupos
+        titulo="Por navegador"
+        descricao={
+          !navegadores.length ? (
+            "O navegador começou a ser coletado agora: aparece aqui a partir das próximas coletas diárias."
+          ) : (
+            <>
+              {resumoApps(exp.porNavegador) ?? "Onde as visitas abriram a página."}
+              {parcialNavegador && ` Navegador só nos dias ${exp.diasComNavegador.map(ddmm).join(", ")}.`}
+            </>
+          )
+        }
+        destaques={destaquesGrupos(navegadores, exp.geral)}
+      >
+        {navegadores.length > 0 && <TabelaGrupos rotuloColuna="Navegador" linhas={navegadores} />}
+      </BlocoGrupos>
+      {comparacao.length > 1 && c && (
+        <BlocoGrupos
+          titulo="Na mesma página, quem não veio desta campanha"
+          descricao={
+            <>
+              Visitas a {c.pagina.replace(/^https?:\/\//, "")} nos mesmos dias. “Sem anúncio” inclui quem já navegava pelo site e voltou ao início, então tende a descer mais.
+              Se a diferença for grande, o anúncio pode estar prometendo algo que a página não mostra logo de cara.
+            </>
+          }
+          destaques={[]}
+        >
+          <TabelaGrupos rotuloColuna="Grupo" linhas={comparacao} />
+        </BlocoGrupos>
+      )}
+    </Secao>
+  );
+}
+
 
 // ───────────────────────────── Cadastros e vendas ─────────────────────────────
 

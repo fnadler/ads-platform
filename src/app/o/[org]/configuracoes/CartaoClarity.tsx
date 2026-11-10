@@ -23,7 +23,7 @@ interface Coleta {
   cortada: boolean;
 }
 
-const RECORTE: Record<string, string> = { "": "Total", "Source,Medium,Campaign": "Origem da visita", "URL,Device": "Página × dispositivo" };
+const RECORTE: Record<string, string> = { "": "Total", "Source,Medium,Campaign": "Origem da visita", "URL,Device": "Página × dispositivo", "URL,Device,Browser": "Página × dispositivo × navegador" };
 const valor = (v: unknown) => (typeof v === "number" ? decimal(v, Number.isInteger(v) ? 0 : 2) : String(v ?? "—"));
 
 export async function CartaoClarity({ orgId, dono, gestor, fuso, supabase }: { orgId: string; dono: boolean; gestor: boolean; fuso: string; supabase: SupabaseClient }) {

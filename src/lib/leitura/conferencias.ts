@@ -2,6 +2,9 @@
 
 import { acessoOrganizacao } from "@/lib/auth/sessao";
 import { inteiro, pct } from "@/lib/formato";
+import { pageSpeedDisponivel } from "@/lib/integracoes/pagespeed";
+import { paginaParaTestar } from "@/lib/pagespeed/job";
+import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { usaCheckoutExterno, type Onboarding } from "@/lib/onboarding/modelo";
 import { analisarPagina, validarUrlPagina } from "@/lib/onboarding/pagina";
 import { abrirPagina, lerScripts } from "@/lib/onboarding/rede";
@@ -148,6 +151,33 @@ export async function conferirRastreio(orgId: string, campanhaId: string): Promi
         });
     }
     return { itens };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}
+
+/**
+ * Põe na fila um teste de velocidade (PageSpeed) de cada página de destino da campanha. Qualquer membro pode
+ * pedir: só lê a página pública, e a fila não duplica um teste que já está esperando.
+ */
+export async function testarVelocidade(orgId: string, campanhaId: string): Promise<{ mensagem: string } | { erro: string }> {
+  try {
+    if (!pageSpeedDisponivel()) return { erro: "O teste de velocidade ainda não foi configurado (falta a chave do PageSpeed)." };
+    const { anuncios } = await anunciosDaCampanha(orgId, campanhaId);
+    const paginas = [...new Set(anuncios.flatMap((a) => a.destinos ?? []).flatMap((d) => {
+      try {
+        return [paginaParaTestar(d)];
+      } catch {
+        return [];
+      }
+    }))];
+    if (!paginas.length) return { erro: "Não encontrei a página de destino dos anúncios desta campanha." };
+    const admin = criarClienteAdmin();
+    for (const p of paginas.slice(0, 5)) {
+      const { error } = await admin.rpc("enfileirar_sincronizacao", { p_org: orgId, p_tipo: "pagespeed", p_alvo: p, p_modo: "manual" });
+      if (error) return { erro: error.message };
+    }
+    return { mensagem: "Teste na fila. O resultado aparece aqui em 1 ou 2 minutos (recarregue a página)." };
   } catch (e) {
     return { erro: mensagem(e) };
   }

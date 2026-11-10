@@ -19,8 +19,12 @@ export interface SegredoClarity {
   token: string;
 }
 
-/** Recortes coletados todo dia: total, origem da visita e página × dispositivo. */
-export const RECORTES_CLARITY: ReadonlyArray<readonly DimensaoClarity[]> = [[], ["Source", "Medium", "Campaign"], ["URL", "Device"]];
+/**
+ * Recortes coletados todo dia: total, origem da visita e página × dispositivo × navegador (cada URL de anúncio
+ * é uma visita, então o navegador sai por visita sem consulta a mais). Até 06–09/11/2026 o último recorte
+ * era só ["URL", "Device"]; quem lê aceita os dois.
+ */
+export const RECORTES_CLARITY: ReadonlyArray<readonly DimensaoClarity[]> = [[], ["Source", "Medium", "Campaign"], ["URL", "Device", "Browser"]];
 
 /** Dia (no fuso) imediatamente anterior a `agora`: o que a janela de 24 h da coleta diária cobre. */
 export function diaAnterior(agora: Date, fuso: string): string {

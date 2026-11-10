@@ -34,11 +34,12 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
       meta_publicacao: `Campanha · ${nomeCampanha.get(alvo) ?? "criação na Meta"}`,
       meta_publico: `Público · ${nomePublico.get(alvo) ?? "excluído"}`,
       clarity: "Clarity · experiência na página",
+      pagespeed: `Velocidade · ${alvo.replace(/^https?:\/\//, "")}`,
     })[tipo] ?? tipo;
 
   return (
     <>
-      <Titulo sobrancelha="Sincronizações" descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook. O Clarity, se conectado, é lido à meia-noite e guarda o dia anterior.">
+      <Titulo sobrancelha="Sincronizações" descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook. O Clarity, se conectado, é lido à meia-noite e guarda o dia anterior. A velocidade das páginas dos anúncios ativos é testada às 6h.">
         Quando os números foram lidos
       </Titulo>
       <div className="grid gap-6">

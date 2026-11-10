@@ -3,7 +3,9 @@ import { executarColetaClarity } from "@/lib/clarity/coleta";
 import { marcarErroConexao } from "@/lib/conexoes/segredos";
 import { ErroClarity } from "@/lib/integracoes/clarity";
 import { ErroLimiteMeta, ErroMeta } from "@/lib/integracoes/meta";
+import { ErroPageSpeed } from "@/lib/integracoes/pagespeed";
 import { executarSincronizacaoMeta } from "@/lib/meta/sincronizacao";
+import { executarTestePagina } from "@/lib/pagespeed/job";
 import { executarPublicacao } from "@/lib/publicacao/job";
 import { executarPublico } from "@/lib/publicos/job";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
@@ -56,6 +58,7 @@ export async function processarFila(prazoMs: number) {
         meta_publicacao: executarPublicacao,
         meta_publico: executarPublico,
         clarity: executarColetaClarity,
+        pagespeed: executarTestePagina,
       }[s.tipo];
       const r: ResultadoJob = await executar(admin, s, temTempo);
       if (r.status === "pronto") {
@@ -79,7 +82,9 @@ export async function processarFila(prazoMs: number) {
         // Publicação: erro da Meta (campo recusado, política) não melhora repetindo — vai direto para a tela.
         !((s.tipo === "meta_publicacao" || s.tipo === "meta_publico") && e instanceof ErroMeta) &&
         // Clarity: token, parâmetro ou cota do dia — repetir só gasta as 10 consultas diárias.
-        !(e instanceof ErroClarity && e.definitivo)
+        !(e instanceof ErroClarity && e.definitivo) &&
+        // PageSpeed: chave, endereço ou página que o Google não abre — repetir não muda nada.
+        !(e instanceof ErroPageSpeed && e.definitivo)
       ) {
         await admin.from("sincronizacoes").update({ status: "na_fila", erro: mensagem(e), atualizado_em: new Date().toISOString() }).eq("id", s.id);
         await admin.rpc("fila_reenviar", { p_sincronizacao: s.id, p_atraso: 120 * (s.tentativas + 1) });

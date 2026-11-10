@@ -1,7 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PecaAnuncio } from "@/components/VisualizarAnuncio";
-import { experienciaDaCampanha, type ColetaBruta, type ExperienciaCampanha } from "@/lib/clarity/campanha";
+import { caminho, experienciaDaCampanha, type ColetaBruta, type ExperienciaCampanha } from "@/lib/clarity/campanha";
+import { pageSpeedDisponivel } from "@/lib/integracoes/pagespeed";
+import { BUCKET_PAGINAS } from "@/lib/pagespeed/job";
+import type { ResumoVelocidade } from "@/lib/pagespeed/resumo";
 import { CHAMADAS, type Chamada } from "@/lib/publicacao/modelo";
 import { BUCKET_UPLOADS } from "@/lib/publicacao/job";
 
@@ -55,15 +58,81 @@ export interface ExperienciaPagina extends ExperienciaCampanha {
   projetoClarity: string | null;
 }
 
-/** Clarity só das visitas da campanha, nos dias coletados do período (recorte página × dispositivo). */
+/**
+ * Clarity só das visitas da campanha, nos dias coletados do período (recorte página × dispositivo, com ou
+ * sem navegador). Se um dia tiver os dois recortes, fica o que tem o navegador. Os destinos dos anúncios
+ * dizem quais URLs são chegada (as outras são páginas internas da mesma visita).
+ */
 export async function carregarExperiencia(supabase: SupabaseClient, orgId: string, campanhaId: string, de: string): Promise<ExperienciaPagina> {
-  const [{ data: coletas }, { data: conexao }] = await Promise.all([
-    supabase.from("clarity_coletas").select("dia, resposta").eq("organizacao_id", orgId).eq("dimensoes", "{URL,Device}").not("dia", "is", null).gte("dia", de).order("dia"),
+  const [{ data: coletas }, { data: anuncios }, { data: conexao }] = await Promise.all([
+    supabase.from("clarity_coletas").select("dia, dimensoes, resposta").eq("organizacao_id", orgId).contains("dimensoes", ["URL", "Device"]).not("dia", "is", null).gte("dia", de).order("dia"),
+    supabase.from("meta_anuncios").select("destinos").eq("organizacao_id", orgId).eq("campaign_id", campanhaId),
     supabase.from("conexoes").select("config").eq("organizacao_id", orgId).eq("tipo", "clarity").maybeSingle(),
   ]);
+  const porDia = new Map<string, ColetaBruta & { dimensoes: string[] }>();
+  for (const c of (coletas ?? []) as Array<ColetaBruta & { dimensoes: string[] }>) {
+    const atual = porDia.get(c.dia);
+    if (!atual || c.dimensoes.length > atual.dimensoes.length) porDia.set(c.dia, c);
+  }
+  const destinos = (anuncios ?? []).flatMap((a) => (a.destinos as string[] | null) ?? []);
   return {
-    ...experienciaDaCampanha((coletas ?? []) as ColetaBruta[], campanhaId),
+    ...experienciaDaCampanha([...porDia.values()], campanhaId, destinos),
     projetoClarity: ((conexao?.config as { projeto_id?: string } | null)?.projeto_id as string) ?? null,
+  };
+}
+
+export interface VelocidadePagina {
+  /** A página de destino principal da campanha (a de mais anúncios ativos). */
+  pagina: string;
+  /** Outras páginas de destino da campanha, além da principal. */
+  outras: number;
+  teste: ResumoVelocidade | null;
+  /** Captura da página inteira (URL assinada de 1 h). */
+  captura: string | null;
+  /** Testes anteriores da mesma página, do mais antigo ao mais recente. */
+  historico: Array<{ testadoEm: string; nota: number | null; lcp: number | null }>;
+  /** A chave do PageSpeed está configurada. */
+  disponivel: boolean;
+}
+
+/** Último teste de velocidade da página de destino principal da campanha (e os anteriores, para tendência). */
+export async function carregarVelocidade(supabase: SupabaseClient, orgId: string, campanhaId: string): Promise<VelocidadePagina | null> {
+  const { data: anuncios } = await supabase.from("meta_anuncios").select("status, destinos").eq("organizacao_id", orgId).eq("campaign_id", campanhaId);
+  const contagem = new Map<string, { url: string; ativos: number; total: number }>();
+  for (const a of anuncios ?? [])
+    for (const d of (a.destinos as string[] | null) ?? []) {
+      const k = caminho(d);
+      if (!k) continue;
+      const c = contagem.get(k) ?? { url: d.split(/[?#]/)[0], ativos: 0, total: 0 };
+      c.total++;
+      if (a.status === "ACTIVE") c.ativos++;
+      contagem.set(k, c);
+    }
+  const [principal] = [...contagem].sort((a, b) => b[1].ativos - a[1].ativos || b[1].total - a[1].total);
+  if (!principal) return null;
+  const { data: testes } = await supabase
+    .from("pagina_testes")
+    .select("testado_em, nota, resumo, captura_path")
+    .eq("organizacao_id", orgId)
+    .eq("chave", principal[0])
+    .eq("estrategia", "mobile")
+    .order("testado_em", { ascending: false })
+    .limit(14);
+  const ultimo = testes?.[0];
+  let captura: string | null = null;
+  if (ultimo?.captura_path) {
+    const { data } = await supabase.storage.from(BUCKET_PAGINAS).createSignedUrl(ultimo.captura_path as string, 3600);
+    captura = data?.signedUrl ?? null;
+  }
+  return {
+    pagina: principal[1].url,
+    outras: contagem.size - 1,
+    teste: (ultimo?.resumo as ResumoVelocidade | undefined) ?? null,
+    captura,
+    historico: (testes ?? [])
+      .map((t) => ({ testadoEm: t.testado_em as string, nota: (t.nota as number | null) ?? null, lcp: (t.resumo as ResumoVelocidade).laboratorio?.lcp ?? null }))
+      .reverse(),
+    disponivel: pageSpeedDisponivel(),
   };
 }
 

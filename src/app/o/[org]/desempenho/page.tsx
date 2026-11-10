@@ -7,7 +7,7 @@ import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { rotaOrg } from "@/lib/rotas";
-import { carregarContextoAcoes, carregarExperiencia, carregarPecas } from "./carregar";
+import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
 import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
 import { somar, zero, type Linha, type Soma } from "./soma";
 import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados } from "./tabelas";
@@ -103,7 +103,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
     return `${rotaOrg(slug, "/desempenho")}${q.size ? `?${q}` : ""}`;
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
-  const [pecas, experiencia, acoes] = await Promise.all([
+  const [pecas, experiencia, velocidade, acoes] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -113,6 +113,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
         )
       : undefined,
     campanha && aba === "pagina" ? carregarExperiencia(supabase, org.id, campanha, de) : null,
+    campanha && aba === "pagina" ? carregarVelocidade(supabase, org.id, campanha) : null,
     campanha
       ? carregarContextoAcoes(supabase, org, campanha, temPapel(papel, "gestor"), linhas, {
           configuracoes: rotaOrg(slug, "/configuracoes"),
@@ -204,6 +205,7 @@ export default async function Desempenho({ params, searchParams }: PageProps<"/o
           ultimoPontoEmAndamento={atuais.at(-1)?.dia === ate}
           pecas={pecas}
           experiencia={experiencia}
+          velocidade={velocidade}
           acoes={acoes}
         />
       ) : (
