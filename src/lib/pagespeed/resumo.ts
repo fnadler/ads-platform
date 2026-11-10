@@ -43,6 +43,8 @@ export interface ResumoVelocidade {
   lcp: { elemento: string | null; seletor: string | null; fases: Partial<Record<"servidor" | "atrasoCarga" | "download" | "atrasoDesenho", number>> };
   achados: Achado[];
   terceiros: Array<{ nome: string; ms: number; bytes: number }>;
+  /** Arquivos de fonte baixados no teste (endereço curto e tamanho). Ausente em testes antigos. */
+  fontes?: Array<{ url: string; bytes: number }>;
   /** Altura e largura (px) da página inteira e da tela do aparelho simulado. */
   pagina: { largura: number; altura: number } | null;
   tela: { largura: number; altura: number };
@@ -197,6 +199,11 @@ export function resumirPageSpeed(json: J): ResumoVelocidade {
     .filter((t) => t.ms > 0 || t.bytes > 0)
     .sort((x, y) => y.ms - x.ms);
 
+  // Fontes: o Lighthouse não tem um diagnóstico para "fontes demais"; a lista de requisições tem.
+  const fontes = lista(obj(a("network-requests").details).items)
+    .filter((i) => i.resourceType === "Font" && texto(i.url))
+    .map((i) => ({ url: encurtarUrl(String(i.url)), bytes: Math.round(numero(i.transferSize) ?? 0) }));
+
   const captura = obj(obj(lr.fullPageScreenshot).screenshot);
   const largura = numero(captura.width);
   const altura = numero(captura.height);
@@ -218,6 +225,7 @@ export function resumirPageSpeed(json: J): ResumoVelocidade {
     lcp: { elemento: texto(obj(noLcp).nodeLabel), seletor: texto(obj(noLcp).selector), fases },
     achados,
     terceiros,
+    fontes,
     pagina: largura && altura ? { largura, altura } : null,
     // Celular do PageSpeed: Moto G Power emulado, 412 × 823.
     tela: celular ? { largura: 412, altura: 823 } : { largura: 1350, altura: 940 },

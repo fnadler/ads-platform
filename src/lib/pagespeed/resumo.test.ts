@@ -149,15 +149,24 @@ describe("lerVelocidade", () => {
     const js = l.diagnosticos.find((d) => d.id === "unused-javascript")!;
     expect(js.detalhes).toHaveLength(1); // o do Facebook fica de fora (não dá para mudar)
     expect(js.porque).toMatch(/pixel da Meta/);
-    expect(l.diagnosticos.find((d) => d.id === "travamento")?.acao).toMatch(/não remova/);
-    expect(l.textoTecnico).toMatch(/Render-blocking requests/);
+    expect(l.diagnosticos.find((d) => d.id === "travamento")?.comoResolver.join(" ")).toMatch(/Não remova o pixel da Meta/);
+    // Relatório para quem executa: o que fazer, como resolver, como conferir, terceiros à parte.
+    expect(l.textoTecnico).toMatch(/O QUE FAZER/);
+    expect(l.textoTecnico).toMatch(/Como resolver:/);
+    expect(l.textoTecnico).toMatch(/Como conferir:/);
+    expect(l.textoTecnico).toMatch(/FORA DO CONTROLE DO SITE/);
+    expect(l.textoTecnico).toMatch(/Next\.js/); // os arquivos em /_next/static/ ligam as dicas de Next
+    expect(l.textoTecnico).not.toMatch(/Render-blocking requests|atrasoDesenho/);
+    // Os arquivos do Facebook não entram na lista do que mexer.
+    const blocoJs = l.textoTecnico.split("Código baixado que a página não usa")[1].split("Como conferir")[0];
+    expect(blocoJs).not.toMatch(/connect\.facebook\.net/);
   });
 
   it("LCP ruim vira o primeiro item, explicando a fase que mais pesa", () => {
     const l = lerVelocidade(resumirPageSpeed(resposta({ lcp: 4800 })));
     const d = l.diagnosticos.find((x) => x.id === "conteudo-principal")!;
     expect(d.tom).toBe("agir");
-    expect(d.porque).toMatch(/espera estilos e scripts/);
+    expect(d.porque).toMatch(/espera estilos, fontes e scripts/);
     expect(l.medidas[0]).toMatchObject({ valor: "4,8 s", categoria: "ruim" });
   });
 
@@ -198,9 +207,32 @@ describe("lerVelocidade", () => {
     const l = lerVelocidade(r);
     const d = l.diagnosticos.find((x) => x.id === "cls-culprits-insight")!;
     expect(d).toMatchObject({ tom: "observar", frente: "estabilidade" });
-    expect(d.acao).toMatch(/Pré-carregar a fonte/);
+    expect(d.comoResolver.join(" ")).toMatch(/Pré-carregue a fonte/);
     expect(l.diagnosticos.map((x) => x.porque).join(" ")).not.toMatch(/celular/);
     expect(l.textoTecnico).toMatch(/computador/);
+  });
+
+  it("fontes demais na primeira carga viram item, com a dica de next/font", () => {
+    const base = resposta();
+    const audits = (base.lighthouseResult as { audits: Record<string, unknown> }).audits;
+    audits["network-requests"] = {
+      score: 1,
+      scoreDisplayMode: "informative",
+      details: {
+        type: "table",
+        items: Array.from({ length: 10 }, (_, i) => ({ url: `https://www.loja.com/_next/static/media/f${i}.woff2`, resourceType: "Font", transferSize: 18000 })).concat([
+          { url: "https://www.loja.com/", resourceType: "Document", transferSize: 16000 } as never,
+        ]),
+      },
+    };
+    const r = resumirPageSpeed(base);
+    expect(r.fontes).toHaveLength(10);
+    const d = lerVelocidade(r).diagnosticos.find((x) => x.id === "fontes")!;
+    expect(d).toMatchObject({ tom: "agir", ganho: "10 fontes, 176 KB" });
+    expect(d.comoResolver.join(" ")).toMatch(/preload: false/);
+    // Poucas fontes: nada a apontar.
+    (audits["network-requests"] as { details: { items: unknown[] } }).details.items = [{ url: "https://www.loja.com/a.woff2", resourceType: "Font", transferSize: 20000 }];
+    expect(lerVelocidade(resumirPageSpeed(base)).diagnosticos.some((x) => x.id === "fontes")).toBe(false);
   });
 
   it("traduz os motivos mais comuns", () => {

@@ -74,9 +74,20 @@ export function CarrosselVelocidade({ diagnosticos, titulo, extra }: { diagnosti
               <span className="font-[600]">O que fazer: </span>
               {aberto.acao}
             </p>
+            {aberto.comoResolver.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-[600] text-ink">Como resolver (para quem cuida do site)</h3>
+                <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm leading-snug text-ink-2">
+                  {aberto.comoResolver.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+                {aberto.conferir && <p className="text-xs text-ink-3">{aberto.conferir}</p>}
+              </div>
+            )}
             {aberto.detalhes.length > 0 && (
               <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-[600] text-ink">Detalhes técnicos</h3>
+                <h3 className="text-sm font-[600] text-ink">Arquivos e elementos</h3>
                 <ul className="flex flex-col gap-1 rounded-md bg-sunken p-3 font-mono text-xs break-all text-ink-2">
                   {aberto.detalhes.map((x) => (
                     <li key={x}>{x}</li>
