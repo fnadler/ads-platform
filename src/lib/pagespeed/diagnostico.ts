@@ -67,11 +67,13 @@ function linhaItem(i: ItemAchado) {
   return partes.join(" ");
 }
 
+/** O teste foi no celular (tela estreita) ou no computador. */
+export const noCelular = (r: ResumoVelocidade) => r.tela.largura < 800;
 const ehDoSite = (url: string | undefined, host: string) => !!url && url.replace(/^www\./, "").startsWith(host);
 const economiaMs = (a: Achado) => Math.max(a.economia.LCP ?? 0, a.economia.FCP ?? 0);
 
 /** Cada diagnóstico conhecido do Lighthouse em texto simples. Nulo = não vale mostrar (pequeno ou de terceiros). */
-type Tradutor = (a: Achado, ctx: { host: string; r: ResumoVelocidade }) => Omit<Diagnostico, "id" | "tom"> & { tom?: Diagnostico["tom"] } | null;
+type Tradutor = (a: Achado, ctx: { host: string; r: ResumoVelocidade; celular: boolean }) => Omit<Diagnostico, "id" | "tom"> & { tom?: Diagnostico["tom"] } | null;
 
 const TRADUTORES: Record<string, Tradutor> = {
   "render-blocking-insight": (a) => {
@@ -81,20 +83,20 @@ const TRADUTORES: Record<string, Tradutor> = {
     return {
       frente: "carregamento",
       titulo: css === a.itens.length ? "Arquivos de estilo seguram a primeira tela" : "Arquivos seguram a primeira tela",
-      porque: `Antes de mostrar qualquer coisa, o celular espera baixar ${plural(a.itens.length, "arquivo", "arquivos")}${css === a.itens.length ? " de estilo (CSS)" : ""}. No teste, isso atrasa a primeira tela em cerca de ${tempo(ms)}.`,
+      porque: `Antes de mostrar qualquer coisa, o navegador espera baixar ${plural(a.itens.length, "arquivo", "arquivos")}${css === a.itens.length ? " de estilo (CSS)" : ""}. No teste, isso atrasa a primeira tela em cerca de ${tempo(ms)}.`,
       acao: "Embutir no HTML só o estilo necessário para a primeira tela e carregar o resto depois (CSS crítico); scripts no topo da página com defer ou async.",
       ganho: `até ${tempo(ms)} mais rápido`,
       detalhes: a.itens.map(linhaItem),
     };
   },
-  "image-delivery-insight": (a) => {
+  "image-delivery-insight": (a, { celular }) => {
     const economia = soma(a.itens.map((i) => i.desperdicio));
     if (economia < 20 * 1024) return null;
     return {
       tom: economia >= 100 * 1024 ? "agir" : "observar",
       frente: "carregamento",
       titulo: "Imagens mais pesadas do que precisam",
-      porque: `${plural(a.itens.length, "imagem tem", "imagens somam")} ${kb(economia)} que não precisariam ser baixados: na internet do celular, isso é tempo de espera.`,
+      porque: `${plural(a.itens.length, "imagem tem", "imagens somam")} ${kb(economia)} que não precisariam ser baixados: ${celular ? "na internet do celular, isso é tempo de espera" : "é tempo de espera e dados gastos à toa"}.`,
       acao: "Exportar as imagens no tamanho em que aparecem na tela (ou em versões por tamanho de tela, com srcset e sizes) e com mais compressão (WebP ou AVIF).",
       ganho: `${kb(economia)} a menos`,
       detalhes: a.itens.map(linhaItem),
@@ -109,7 +111,7 @@ const TRADUTORES: Record<string, Tradutor> = {
       tom: economia >= 100 * 1024 ? "agir" : "observar",
       frente: "carregamento",
       titulo: "Código baixado que a página não usa",
-      porque: `${kb(economia)} de JavaScript do próprio site chegam ao celular sem serem usados nesta página.${deFora >= 10 * 1024 ? ` Outros ${kb(deFora)} são do pixel da Meta e de ferramentas de fora, que não dá para mudar.` : ""}`,
+      porque: `${kb(economia)} de JavaScript do próprio site chegam ao navegador sem serem usados nesta página.${deFora >= 10 * 1024 ? ` Outros ${kb(deFora)} são do pixel da Meta e de ferramentas de fora, que não dá para mudar.` : ""}`,
       acao: "Carregar sob demanda o que não aparece na primeira tela (import dinâmico) e tirar bibliotecas que a página não usa.",
       ganho: `${kb(economia)} a menos`,
       detalhes: doSite.map(linhaItem),
@@ -150,7 +152,7 @@ const TRADUTORES: Record<string, Tradutor> = {
       tom: "observar",
       frente: "carregamento",
       titulo: "Arquivos do site sem cache longo",
-      porque: `Quem volta à página baixa de novo ${kb(economia)} que poderiam ficar guardados no celular.`,
+      porque: `Quem volta à página baixa de novo ${kb(economia)} que poderiam ficar guardados no aparelho.`,
       acao: "Configurar cache de longo prazo (Cache-Control) para imagens, fontes e arquivos estáticos.",
       detalhes: doSite.map(linhaItem),
     };
@@ -172,12 +174,17 @@ const TRADUTORES: Record<string, Tradutor> = {
     detalhes: a.itens.map(linhaItem),
   }),
   "cls-culprits-insight": (a, { r }) => {
-    if ((r.laboratorio.cls ?? 0) <= FAIXAS.cls[0]) return null;
+    const cls = r.laboratorio.cls ?? 0;
+    if (cls <= FAIXAS.cls[0]) return null;
+    const fonte = a.itens.some((i) => /web font/i.test(i.motivo ?? ""));
     return {
+      tom: cls > FAIXAS.cls[1] ? "agir" : "observar",
       frente: "estabilidade",
       titulo: "Coisas mudam de lugar enquanto a página carrega",
-      porque: "Textos e botões pulam quando algo carrega depois: a pessoa perde onde estava lendo ou toca no lugar errado.",
-      acao: "Definir largura e altura de imagens e vídeos, reservar espaço para o que entra depois (banners, avisos) e carregar as fontes sem trocar o tamanho do texto.",
+      porque: `Textos e botões pulam quando algo carrega depois: a pessoa perde onde estava lendo ou toca no lugar errado.${fonte ? " Aqui, o que empurra a página é a fonte do site chegando depois do texto." : ""}`,
+      acao: fonte
+        ? "Pré-carregar a fonte usada no topo (preload) e usar uma fonte de reserva com o mesmo tamanho (size-adjust, ou font-display: optional), para o texto não mudar de tamanho quando ela chega."
+        : "Definir largura e altura de imagens e vídeos, reservar espaço para o que entra depois (banners, avisos) e carregar as fontes sem trocar o tamanho do texto.",
       detalhes: a.itens.map(linhaItem),
     };
   },
@@ -201,7 +208,7 @@ const TRADUTORES: Record<string, Tradutor> = {
     tom: "observar",
     frente: "resposta",
     titulo: "Página com elementos demais",
-    porque: "Uma página muito grande deixa cada toque e cada rolagem mais pesados para o celular.",
+    porque: "Uma página muito grande deixa cada toque e cada rolagem mais pesados para o aparelho.",
     acao: "Carregar listas longas aos poucos e simplificar trechos com muitos elementos aninhados.",
     detalhes: [],
   }),
@@ -232,7 +239,7 @@ function travamento(r: ResumoVelocidade, host: string): Omit<Diagnostico, "id"> 
     tom: cat === "ruim" ? "agir" : "observar",
     frente: "resposta",
     titulo: "A página fica travada enquanto carrega",
-    porque: `Durante o carregamento, o celular passa ${tempo(tbt)} ocupado sem conseguir responder: quem toca num botão nesse momento sente a página travada.${culpados.length ? ` Quem mais ocupa o celular nesse período: ${culpados.join(", ")}.` : ""}`,
+    porque: `Durante o carregamento, o navegador passa ${tempo(tbt)} ocupado sem conseguir responder: quem toca num botão nesse momento sente a página travada.${culpados.length ? ` Quem mais ocupa o navegador nesse período: ${culpados.join(", ")}.` : ""}`,
     acao: `Adiar para depois que a página aparece os scripts que não são essenciais (chat, mapas, vídeos, pixels extras) e quebrar as tarefas longas do código do site.${metaPrimeiro ? " O pixel da Meta pesa, mas é ele que mede os resultados da campanha: não remova." : ""}`,
     detalhes: longas.map(linhaItem),
   };
@@ -300,7 +307,7 @@ export function lerVelocidade(r: ResumoVelocidade): LeituraVelocidade {
   const travada = travamento(r, host);
   if (travada) diagnosticos.push({ id: "travamento", ...travada });
   for (const a of r.achados) {
-    const t = TRADUTORES[a.id]?.(a, { host, r });
+    const t = TRADUTORES[a.id]?.(a, { host, r, celular: noCelular(r) });
     if (!t) continue;
     const ms = economiaMs(a);
     const bytes = soma(a.itens.map((i) => i.desperdicio));
@@ -319,9 +326,9 @@ export function lerVelocidade(r: ResumoVelocidade): LeituraVelocidade {
 export function textoTecnico(r: ResumoVelocidade) {
   const lab = r.laboratorio;
   const linhas = [
-    `PageSpeed Insights (Lighthouse ${r.lighthouse}, celular) — ${r.url}`,
+    `PageSpeed Insights (Lighthouse ${r.lighthouse}, ${noCelular(r) ? "celular" : "computador"}) — ${r.url}`,
     `Testado em ${new Date(r.testadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · nota ${r.nota ?? "—"}/100`,
-    `LCP ${tempo(lab.lcp)} · FCP ${tempo(lab.fcp)} · TBT ${tempo(lab.tbt)} · CLS ${lab.cls ?? "—"} · Speed Index ${tempo(lab.si)}`,
+    `LCP ${tempo(lab.lcp)} · FCP ${tempo(lab.fcp)} · TBT ${tempo(lab.tbt)} · CLS ${lab.cls === null ? "—" : Math.round(lab.cls * 1000) / 1000} · Speed Index ${tempo(lab.si)}`,
   ];
   if (r.campo)
     linhas.push(

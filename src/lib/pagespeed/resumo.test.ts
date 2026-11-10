@@ -166,6 +166,43 @@ describe("lerVelocidade", () => {
     expect(l.diagnosticos.some((d) => d.id === "travamento")).toBe(false);
   });
 
+  it("no computador: deslocamento pela fonte, sem a linha de total, com texto sem falar em celular", () => {
+    const base = resposta({ cls: 0.147 });
+    const lr = base.lighthouseResult as Record<string, unknown> & { audits: Record<string, unknown>; configSettings: Record<string, unknown> };
+    lr.configSettings = { formFactor: "desktop" };
+    lr.audits["cls-culprits-insight"] = {
+      title: "Layout shift culprits",
+      score: 0,
+      scoreDisplayMode: "numeric",
+      metricSavings: { CLS: 0 },
+      details: {
+        type: "list",
+        items: [
+          {
+            type: "table",
+            items: [
+              { score: 0.147, node: { type: "text", value: "Total" } },
+              {
+                score: 0.147,
+                node: { type: "node", selector: "section.mk-hero > div.mk-hero-card", nodeLabel: "Brasil\nBRA1–20" },
+                subItems: { type: "subitems", items: [{ cause: "Web font", extra: { type: "url", value: "https://www.loja.com/fonte.woff2" } }] },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const r = resumirPageSpeed(base);
+    expect(r.tela).toEqual({ largura: 1350, altura: 940 });
+    expect(r.achados.find((a) => a.id === "cls-culprits-insight")?.itens).toEqual([{ rotulo: "section.mk-hero > div.mk-hero-card", deslocamento: 0.147, motivo: "Web font" }]);
+    const l = lerVelocidade(r);
+    const d = l.diagnosticos.find((x) => x.id === "cls-culprits-insight")!;
+    expect(d).toMatchObject({ tom: "observar", frente: "estabilidade" });
+    expect(d.acao).toMatch(/Pré-carregar a fonte/);
+    expect(l.diagnosticos.map((x) => x.porque).join(" ")).not.toMatch(/celular/);
+    expect(l.textoTecnico).toMatch(/computador/);
+  });
+
   it("traduz os motivos mais comuns", () => {
     expect(traduzirMotivo("This image file is larger than it needs to be (480x556) for its displayed dimensions (167x194).")).toBe("o arquivo tem 480x556 px e aparece em 167x194 px");
     expect(traduzirMotivo("Increasing the image compression factor could improve this image’s download size")).toBe("dá para comprimir mais");

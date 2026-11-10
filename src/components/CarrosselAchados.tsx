@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { ContextoAcoes } from "@/app/o/[org]/desempenho/carregar";
 import { BotaoAcao } from "./AcaoSugestao";
 import { AtalhosSugestao } from "./AtalhosSugestao";
-import { IconeChevron, IconeSeta } from "./Icones";
+import { IconeSeta } from "./Icones";
 import { Caminho, Chip, NumeroDestaque, ResumoLeitura, TOM } from "./LeituraCampanha";
 import { Modal } from "./Modal";
+import { Trilho } from "./Trilho";
 import type { Achado, AreaAchado } from "@/lib/leitura/modelo";
 
 // Sugestões da leitura em carrossel: cartões compactos (estado, título, o número e o que fazer), do mais
@@ -76,58 +77,16 @@ export function CarrosselAchados({
   links?: LinksArea;
   acoes?: ContextoAcoes;
 }) {
-  const trilho = useRef<HTMLDivElement>(null);
   const [aberto, setAberto] = useState<Achado | null>(null);
-  const [pode, setPode] = useState({ voltar: false, avancar: false });
-
-  useEffect(() => {
-    const t = trilho.current;
-    if (!t) return;
-    const medir = () => setPode({ voltar: t.scrollLeft > 4, avancar: t.scrollLeft + t.clientWidth < t.scrollWidth - 4 });
-    medir();
-    t.addEventListener("scroll", medir, { passive: true });
-    window.addEventListener("resize", medir);
-    return () => {
-      t.removeEventListener("scroll", medir);
-      window.removeEventListener("resize", medir);
-    };
-  }, [achados.length]);
-
-  const rolar = (sentido: 1 | -1) => trilho.current?.scrollBy({ left: sentido * Math.max(trilho.current.clientWidth * 0.8, 280), behavior: "smooth" });
   const linkDe = (a: Achado) => (a.area === "geral" ? undefined : links?.[a.area]);
 
   return (
-    <section className="flex min-w-0 flex-col gap-3" aria-label={titulo}>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <div className="min-w-0">
-          <h2 className="text-base font-[600] text-ink">{titulo}</h2>
-          {nota && <p className="mt-0.5 text-xs text-ink-3">{nota}</p>}
-        </div>
-        <div className="flex items-center gap-3">
-          <ResumoLeitura achados={achados} />
-          {(pode.voltar || pode.avancar) && (
-            <div className="hidden gap-1 sm:flex">
-              {([-1, 1] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => rolar(s)}
-                  disabled={s === -1 ? !pode.voltar : !pode.avancar}
-                  aria-label={s === -1 ? "Sugestões anteriores" : "Próximas sugestões"}
-                  className="flex size-10 items-center justify-center rounded-md border border-line-strong bg-surface text-ink hover:bg-surface-2 disabled:opacity-40"
-                >
-                  <IconeChevron tamanho={18} className={s === -1 ? "rotate-90" : "-rotate-90"} />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      <div ref={trilho} className="-mx-1 flex snap-x snap-mandatory scroll-px-1 gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
+    <>
+      <Trilho titulo={titulo} nota={nota} extra={<ResumoLeitura achados={achados} />} rotulos={["Sugestões anteriores", "Próximas sugestões"]} quantidade={achados.length}>
         {achados.map((a) => (
           <CartaoCompacto key={a.id} a={a} link={linkDe(a)} abrir={() => setAberto(a)} acoes={acoes} />
         ))}
-      </div>
+      </Trilho>
 
       <Modal aberto={!!aberto} aoFechar={() => setAberto(null)} titulo={aberto?.titulo}>
         {aberto && (
@@ -162,6 +121,6 @@ export function CarrosselAchados({
           </div>
         )}
       </Modal>
-    </section>
+    </>
   );
 }

@@ -81,21 +81,26 @@ export async function carregarExperiencia(supabase: SupabaseClient, orgId: strin
   };
 }
 
+export interface TesteVelocidade {
+  teste: ResumoVelocidade | null;
+  /** Captura da página inteira (URL assinada de 1 h). */
+  captura: string | null;
+  /** Testes anteriores, do mais antigo ao mais recente. */
+  historico: Array<{ testadoEm: string; nota: number | null; lcp: number | null }>;
+}
+
 export interface VelocidadePagina {
   /** A página de destino principal da campanha (a de mais anúncios ativos). */
   pagina: string;
   /** Outras páginas de destino da campanha, além da principal. */
   outras: number;
-  teste: ResumoVelocidade | null;
-  /** Captura da página inteira (URL assinada de 1 h). */
-  captura: string | null;
-  /** Testes anteriores da mesma página, do mais antigo ao mais recente. */
-  historico: Array<{ testadoEm: string; nota: number | null; lcp: number | null }>;
+  celular: TesteVelocidade;
+  computador: TesteVelocidade;
   /** A chave do PageSpeed está configurada. */
   disponivel: boolean;
 }
 
-/** Último teste de velocidade da página de destino principal da campanha (e os anteriores, para tendência). */
+/** Últimos testes de velocidade (celular e computador) da página de destino principal da campanha. */
 export async function carregarVelocidade(supabase: SupabaseClient, orgId: string, campanhaId: string): Promise<VelocidadePagina | null> {
   const { data: anuncios } = await supabase.from("meta_anuncios").select("status, destinos").eq("organizacao_id", orgId).eq("campaign_id", campanhaId);
   const contagem = new Map<string, { url: string; ativos: number; total: number }>();
@@ -112,28 +117,27 @@ export async function carregarVelocidade(supabase: SupabaseClient, orgId: string
   if (!principal) return null;
   const { data: testes } = await supabase
     .from("pagina_testes")
-    .select("testado_em, nota, resumo, captura_path")
+    .select("estrategia, testado_em, nota, resumo, captura_path")
     .eq("organizacao_id", orgId)
     .eq("chave", principal[0])
-    .eq("estrategia", "mobile")
     .order("testado_em", { ascending: false })
-    .limit(14);
-  const ultimo = testes?.[0];
-  let captura: string | null = null;
-  if (ultimo?.captura_path) {
-    const { data } = await supabase.storage.from(BUCKET_PAGINAS).createSignedUrl(ultimo.captura_path as string, 3600);
-    captura = data?.signedUrl ?? null;
-  }
-  return {
-    pagina: principal[1].url,
-    outras: contagem.size - 1,
-    teste: (ultimo?.resumo as ResumoVelocidade | undefined) ?? null,
-    captura,
-    historico: (testes ?? [])
-      .map((t) => ({ testadoEm: t.testado_em as string, nota: (t.nota as number | null) ?? null, lcp: (t.resumo as ResumoVelocidade).laboratorio?.lcp ?? null }))
-      .reverse(),
-    disponivel: pageSpeedDisponivel(),
+    .limit(28);
+  const daVersao = async (estrategia: "mobile" | "desktop"): Promise<TesteVelocidade> => {
+    const lista = (testes ?? []).filter((t) => t.estrategia === estrategia).slice(0, 14);
+    const ultimo = lista[0];
+    let captura: string | null = null;
+    if (ultimo?.captura_path) {
+      const { data } = await supabase.storage.from(BUCKET_PAGINAS).createSignedUrl(ultimo.captura_path as string, 3600);
+      captura = data?.signedUrl ?? null;
+    }
+    return {
+      teste: (ultimo?.resumo as ResumoVelocidade | undefined) ?? null,
+      captura,
+      historico: lista.map((t) => ({ testadoEm: t.testado_em as string, nota: (t.nota as number | null) ?? null, lcp: (t.resumo as ResumoVelocidade).laboratorio?.lcp ?? null })).reverse(),
+    };
   };
+  const [celular, computador] = await Promise.all([daVersao("mobile"), daVersao("desktop")]);
+  return { pagina: principal[1].url, outras: contagem.size - 1, celular, computador, disponivel: pageSpeedDisponivel() };
 }
 
 export interface ContextoAcoes {

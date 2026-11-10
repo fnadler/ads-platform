@@ -66,8 +66,9 @@ export function encurtarUrl(url: string) {
 
 /** Linhas de uma tabela de detalhes; numa lista, as das tabelas de dentro. */
 function linhas(detalhes: J): J[] {
-  if (detalhes.type === "list") return lista(detalhes.items).flatMap((i) => (i.type === "table" || i.type === "opportunity" ? lista(i.items) : []));
-  return lista(detalhes.items);
+  const todas = detalhes.type === "list" ? lista(detalhes.items).flatMap((i) => (i.type === "table" || i.type === "opportunity" ? lista(i.items) : [])) : lista(detalhes.items);
+  // Linha de total ({node: {type: "text", value: "Total"}}) não é um item.
+  return todas.filter((i) => obj(i.node).type !== "text");
 }
 
 function item(i: J): ItemAchado {
@@ -77,7 +78,9 @@ function item(i: J): ItemAchado {
   const url = texto(i.url) ?? texto(i.source && obj(i.source).url);
   const r: ItemAchado = {};
   if (url) r.url = encurtarUrl(url);
-  const rotulo = texto(i.entity) ?? texto(obj(i.entity).text) ?? texto(no.nodeLabel) ?? texto(no.selector);
+  // Rótulo de várias linhas (um bloco inteiro de texto) não ajuda: vale o seletor.
+  const label = texto(no.nodeLabel);
+  const rotulo = texto(i.entity) ?? texto(obj(i.entity).text) ?? (label && !label.includes("\n") ? label : null) ?? texto(no.selector) ?? label;
   if (rotulo) r.rotulo = rotulo.slice(0, 160);
   const bytes = numero(i.totalBytes) ?? numero(i.transferSize);
   if (bytes !== null) r.bytes = Math.round(bytes);
@@ -151,6 +154,7 @@ const IGNORAR = new Set([
   "network-dependency-tree-insight",
   "total-byte-weight",
   "mainthread-work-breakdown",
+  "layout-shifts", // o mesmo que cls-culprits-insight
 ]);
 
 export function resumirPageSpeed(json: J): ResumoVelocidade {

@@ -9,7 +9,7 @@ import { BlocoGrupos, destaquesGrupos, nomeNavegador, quemNoNavegador, resumoApp
 import { VisualizarAnuncio, type PecaAnuncio } from "@/components/VisualizarAnuncio";
 import { APARELHOS, caminho } from "@/lib/clarity/campanha";
 import { BotaoAcao } from "@/components/AcaoSugestao";
-import type { ContextoAcoes, ExperienciaPagina, VelocidadePagina } from "./carregar";
+import type { ContextoAcoes, ExperienciaPagina, TesteVelocidade, VelocidadePagina } from "./carregar";
 import { Aviso, BotaoLink, Cartao, corAnuncio, Indicador, Indicadores, Tabela, Vazio } from "@/components/ui";
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
@@ -589,12 +589,16 @@ function AbaPagina(d: DadosDetalhe) {
   const suficientes = comVisitas.filter((a) => exp!.porAparelho[a]!.sessoes >= 10);
   const comMapa = suficientes.length ? suficientes : comVisitas.slice(0, 1);
   const poucos = comVisitas.filter((a) => !comMapa.includes(a));
-  // A captura do teste de velocidade entra no mapa do celular quando é da mesma página que as visitas.
+  // A captura do teste de velocidade entra no mapa de cada aparelho quando é da mesma página que as visitas.
   const v = d.velocidade;
-  const captura: CapturaPagina | null =
-    v?.captura && v.teste?.pagina && (!exp?.paginas[0] || caminho(exp.paginas[0].url) === caminho(v.teste.url))
-      ? { url: v.captura, altura: v.teste.pagina.altura, tela: v.teste.tela.altura }
+  const capturaDe = (t: TesteVelocidade | undefined): CapturaPagina | null =>
+    t?.captura && t.teste?.pagina && (!exp?.paginas[0] || caminho(exp.paginas[0].url) === caminho(t.teste.url))
+      ? { url: t.captura, altura: t.teste.pagina.altura, tela: t.teste.tela.altura }
       : null;
+  const capturas: Partial<Record<(typeof APARELHOS)[number], CapturaPagina | null>> = { Mobile: capturaDe(v?.celular), PC: capturaDe(v?.computador) };
+  const participacao = exp?.sessoes
+    ? { celular: ((exp.porAparelho.Mobile?.sessoes ?? 0) + (exp.porAparelho.Tablet?.sessoes ?? 0)) / exp.sessoes, computador: (exp.porAparelho.PC?.sessoes ?? 0) / exp.sessoes }
+    : null;
   return (
     <>
       <Indicadores className="grid-cols-1 sm:grid-cols-3">
@@ -614,8 +618,13 @@ function AbaPagina(d: DadosDetalhe) {
       <SugestoesDaArea achados={achados} acoes={d.acoes} padrao="A página está abrindo e convertendo as visitas como antes" />
 
       {v && (
-        <Secao titulo="Velocidade no celular">
-          <SecaoVelocidade v={v} acoes={d.acoes ? { orgId: d.acoes.orgId, campanha: d.acoes.campanha } : undefined} projetoClarity={d.experiencia?.projetoClarity ?? d.acoes?.projetoClarity} />
+        <Secao titulo="Velocidade da página">
+          <SecaoVelocidade
+            v={v}
+            acoes={d.acoes ? { orgId: d.acoes.orgId, campanha: d.acoes.campanha } : undefined}
+            projetoClarity={d.experiencia?.projetoClarity ?? d.acoes?.projetoClarity}
+            participacao={participacao}
+          />
         </Secao>
       )}
 
@@ -642,44 +651,49 @@ function AbaPagina(d: DadosDetalhe) {
                   Medido pelo Clarity em {exp.dias.map(ddmm).join(", ")}, só nas visitas que chegaram pelo link dos anúncios
                   {exp.paginas[0] ? <> (página {exp.paginas[0].url.replace(/^https?:\/\//, "")})</> : null}.
                 </p>
-                <VisitasPorAparelho porAparelho={exp.porAparelho} />
-                <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-                  {comMapa.map((a) => (
-                    <MapaRolagem key={a} aparelho={a} e={exp.porAparelho[a]!} captura={a === "Mobile" ? captura : null} />
-                  ))}
-                </div>
-                {poucos.length > 0 && (
-                  <p className="text-xs text-ink-3">
-                    {juntarNomes(poucos.map((a) => `${NOME_APARELHO[a]} (${inteiro(exp.porAparelho[a]!.sessoes)})`))}: poucas visitas para desenhar a rolagem.
-                  </p>
-                )}
-                {exp.geral && <SinaisProblema s={exp.geral} gravacoes={projeto ? `https://clarity.microsoft.com/projects/view/${projeto}/impressions` : null} />}
-                <div className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-5 shadow-card">
-                  <h3 className="text-base font-[600] text-ink">Mapa de cliques</h3>
-                  <p className="max-w-3xl text-sm text-ink-2">
-                    O Clarity não entrega o mapa de cliques para outros sistemas, só no painel dele. Lá, abra os mapas de calor, escolha a página e alterne entre Celular e
-                    Computador para ver onde as pessoas clicam e até onde descem. As gravações mostram visitas inteiras; filtre por origem = anuncio_meta.
-                  </p>
-                  {projeto && (
-                    <div className="flex flex-wrap gap-2">
-                      <a
-                        href={`https://clarity.microsoft.com/projects/view/${projeto}/heatmaps`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
-                      >
-                        Abrir mapas de calor <IconeExterno tamanho={15} />
-                      </a>
-                      <a
-                        href={`https://clarity.microsoft.com/projects/view/${projeto}/impressions`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
-                      >
-                        Ver gravações <IconeExterno tamanho={15} />
-                      </a>
+                {/* No desktop: aparelhos, sinais e mapa de cliques numa coluna à esquerda; a rolagem de cada aparelho à direita. */}
+                <div className="grid gap-4 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)] lg:items-start">
+                  <div className="flex flex-col gap-4">
+                    <VisitasPorAparelho porAparelho={exp.porAparelho} empilhado />
+                    {exp.geral && <SinaisProblema s={exp.geral} gravacoes={projeto ? `https://clarity.microsoft.com/projects/view/${projeto}/impressions` : null} compacto />}
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-5 shadow-card">
+                      <h3 className="text-base font-[600] text-ink">Mapa de cliques</h3>
+                      <p className="max-w-3xl text-sm text-ink-2">
+                        O Clarity não entrega o mapa de cliques para outros sistemas, só no painel dele. Lá, abra os mapas de calor, escolha a página e alterne entre Celular e
+                        Computador para ver onde as pessoas clicam e até onde descem. As gravações mostram visitas inteiras; filtre por origem = anuncio_meta.
+                      </p>
+                      {projeto && (
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={`https://clarity.microsoft.com/projects/view/${projeto}/heatmaps`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
+                          >
+                            Abrir mapas de calor <IconeExterno tamanho={15} />
+                          </a>
+                          <a
+                            href={`https://clarity.microsoft.com/projects/view/${projeto}/impressions`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line-strong bg-surface px-4 text-sm font-[550] text-ink no-underline hover:bg-surface-2 hover:no-underline"
+                          >
+                            Ver gravações <IconeExterno tamanho={15} />
+                          </a>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-4">
+                    {comMapa.map((a) => (
+                      <MapaRolagem key={a} aparelho={a} e={exp.porAparelho[a]!} captura={capturas[a] ?? null} />
+                    ))}
+                    {poucos.length > 0 && (
+                      <p className="text-xs text-ink-3">
+                        {juntarNomes(poucos.map((a) => `${NOME_APARELHO[a]} (${inteiro(exp.porAparelho[a]!.sessoes)})`))}: poucas visitas para desenhar a rolagem.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </>
             ) : (

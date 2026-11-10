@@ -186,7 +186,7 @@ const SINAIS: Array<{ k: "cliqueMorto" | "cliqueRaiva" | "erroScript" | "cliqueE
 ];
 
 /** O que deu errado durante as visitas da campanha. Acima do limite, a linha ganha o ícone de atenção. */
-export function SinaisProblema({ s, gravacoes }: { s: SinaisVisitas; gravacoes?: string | null }) {
+export function SinaisProblema({ s, gravacoes, compacto }: { s: SinaisVisitas; gravacoes?: string | null; compacto?: boolean }) {
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -197,7 +197,7 @@ export function SinaisProblema({ s, gravacoes }: { s: SinaisVisitas; gravacoes?:
           </a>
         )}
       </div>
-      <ul className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      <ul className={`grid gap-x-6 gap-y-3 ${compacto ? "" : "sm:grid-cols-2"}`}>
         {SINAIS.map(({ k, rotulo, explica, alerta }) => {
           const v = s[k];
           const atencao = v !== null && v >= alerta;

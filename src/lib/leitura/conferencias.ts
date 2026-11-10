@@ -177,7 +177,7 @@ export async function testarVelocidade(orgId: string, campanhaId: string): Promi
       const { error } = await admin.rpc("enfileirar_sincronizacao", { p_org: orgId, p_tipo: "pagespeed", p_alvo: p, p_modo: "manual" });
       if (error) return { erro: error.message };
     }
-    return { mensagem: "Teste na fila. O resultado aparece aqui em 1 ou 2 minutos (recarregue a página)." };
+    return { mensagem: "Teste na fila (celular e computador). O resultado aparece aqui em 2 ou 3 minutos: recarregue a página." };
   } catch (e) {
     return { erro: mensagem(e) };
   }

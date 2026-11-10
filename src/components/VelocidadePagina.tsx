@@ -1,21 +1,28 @@
 import type { ReactNode } from "react";
+import { AbasAparelho } from "@/components/AbasAparelho";
 import { AcoesVelocidade } from "@/components/AcoesVelocidade";
-import { IconeExclamacao, IconeExterno, IconeInfo } from "@/components/Icones";
+import { CarrosselVelocidade } from "@/components/CarrosselVelocidade";
+import { IconeExterno } from "@/components/Icones";
 import { Aviso, Etiqueta, Vazio } from "@/components/ui";
-import { lerVelocidade, tempo, type Diagnostico } from "@/lib/pagespeed/diagnostico";
+import { lerVelocidade, tempo } from "@/lib/pagespeed/diagnostico";
 import type { Categoria, MetricaCampo, ResumoVelocidade } from "@/lib/pagespeed/resumo";
 import { pct } from "@/lib/formato";
 
-// Velocidade da página de destino no celular: as três medidas que importam (com a faixa do Google), o que
-// está atrasando e o que fazer, em texto simples, com os detalhes técnicos fechados para encaminhar.
-// O número vem de um teste de laboratório; quando o Google tem visitas reais suficientes (Chrome), elas
-// aparecem também, na mesma barra bom / precisa melhorar / ruim que o painel do Clarity usa.
+// Velocidade da página de destino, no celular e no computador (abas): as três medidas que importam (com a
+// faixa do Google) e, em carrossel, o que está atrasando e o que fazer. Os números vêm de um teste de
+// laboratório; quando o Google tem visitas reais suficientes (Chrome), elas aparecem também, na mesma barra
+// bom / precisa melhorar / ruim que o painel do Clarity usa.
+
+export interface TesteVersao {
+  teste: ResumoVelocidade | null;
+  historico: Array<{ testadoEm: string; nota: number | null; lcp: number | null }>;
+}
 
 export interface DadosVelocidade {
   pagina: string;
   outras: number;
-  teste: ResumoVelocidade | null;
-  historico: Array<{ testadoEm: string; nota: number | null; lcp: number | null }>;
+  celular: TesteVersao;
+  computador: TesteVersao;
   disponivel: boolean;
 }
 
@@ -36,26 +43,78 @@ const NOME_CAMPO: Record<MetricaCampo, string> = {
 const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const semProtocolo = (u: string) => u.replace(/^https?:\/\//, "");
 
-export function VelocidadePagina({ v, acoes, projetoClarity }: { v: DadosVelocidade; acoes?: { orgId: string; campanha: string }; projetoClarity?: string | null }) {
-  const teste = v.teste;
+export function VelocidadePagina({
+  v,
+  acoes,
+  projetoClarity,
+  participacao,
+}: {
+  v: DadosVelocidade;
+  acoes?: { orgId: string; campanha: string };
+  projetoClarity?: string | null;
+  /** Fração das visitas da campanha em cada aparelho (Clarity), para mostrar nas abas. */
+  participacao?: { celular: number; computador: number } | null;
+}) {
+  if (!v.celular.teste && !v.computador.teste)
+    return (
+      <Vazio titulo="A velocidade desta página ainda não foi testada" acao={acoes ? <AcoesVelocidade orgId={acoes.orgId} campanha={acoes.campanha} podeTestar={v.disponivel} /> : null}>
+        {v.disponivel
+          ? `O teste abre ${semProtocolo(v.pagina)} num celular e num computador simulados e aponta o que deixa a página lenta, com o que fazer. Ele roda sozinho todo dia às 6h para as páginas dos anúncios ativos.`
+          : "Falta configurar a chave do PageSpeed (PAGESPEED_API_KEY) no servidor."}
+      </Vazio>
+    );
+
+  const visitas = (f: number | undefined) => (f === undefined ? undefined : `${pct(f, 0)} das visitas`);
+  return (
+    <AbasAparelho
+      abas={[
+        {
+          chave: "celular",
+          rotulo: "Celular",
+          detalhe: visitas(participacao?.celular),
+          conteudo: <PainelVersao versao={v.celular} aparelho="celular" v={v} acoes={acoes} projetoClarity={projetoClarity} />,
+        },
+        {
+          chave: "computador",
+          rotulo: "Computador",
+          detalhe: visitas(participacao?.computador),
+          conteudo: <PainelVersao versao={v.computador} aparelho="computador" v={v} acoes={acoes} projetoClarity={projetoClarity} />,
+        },
+      ]}
+    />
+  );
+}
+
+function PainelVersao({
+  versao,
+  aparelho,
+  v,
+  acoes,
+  projetoClarity,
+}: {
+  versao: TesteVersao;
+  aparelho: "celular" | "computador";
+  v: DadosVelocidade;
+  acoes?: { orgId: string; campanha: string };
+  projetoClarity?: string | null;
+}) {
+  const teste = versao.teste;
   const leitura = teste ? lerVelocidade(teste) : null;
   const botoes = acoes ? <AcoesVelocidade orgId={acoes.orgId} campanha={acoes.campanha} texto={leitura?.textoTecnico} podeTestar={v.disponivel} /> : null;
 
   if (!teste || !leitura)
     return (
-      <Vazio titulo="A velocidade desta página ainda não foi testada" acao={botoes}>
-        {v.disponivel
-          ? `O teste abre ${semProtocolo(v.pagina)} num celular simulado e aponta o que deixa a página lenta, com o que fazer. Ele roda sozinho todo dia às 6h para as páginas dos anúncios ativos.`
-          : "Falta configurar a chave do PageSpeed (PAGESPEED_API_KEY) no servidor."}
+      <Vazio titulo={`Ainda não há teste no ${aparelho}`} acao={botoes}>
+        O próximo teste (todo dia às 6h, ou agora pelo botão) mede a página no celular e no computador.
       </Vazio>
     );
 
-  const anteriores = v.historico.filter((h) => h.nota !== null).slice(-6);
+  const anteriores = versao.historico.filter((h) => h.nota !== null).slice(-6);
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-2xl text-sm text-ink-2">
-          Teste de {semProtocolo(teste.url)} em {dataHora(teste.testadoEm)}
+          Teste de {semProtocolo(teste.url)} no {aparelho} em {dataHora(teste.testadoEm)}
           {teste.nota !== null && (
             <>
               {" "}
@@ -87,8 +146,10 @@ export function VelocidadePagina({ v, acoes, projetoClarity }: { v: DadosVelocid
         <span>
           {teste.campo
             ? "Os números de cima são de um teste de laboratório; a barra de visitas reais vem do Chrome (últimos 28 dias). "
-            : "Teste de laboratório: um celular simulado, com internet 4G e nada guardado em cache. O Google ainda não tem visitas reais suficientes desta página para medir. "}
-          Quem abre pelo Instagram ou pelo Facebook costuma ver a página mais devagar: o navegador desses apps é mais pesado e a rede do celular varia.
+            : aparelho === "celular"
+              ? "Teste de laboratório: um celular simulado, com internet 4G e nada guardado em cache. O Google ainda não tem visitas reais suficientes desta página para medir. "
+              : "Teste de laboratório: um computador simulado, com internet de banda larga e nada guardado em cache. O Google ainda não tem visitas reais suficientes desta página para medir. "}
+          {aparelho === "celular" && "Quem abre pelo Instagram ou pelo Facebook costuma ver a página mais devagar: o navegador desses apps é mais pesado e a rede do celular varia."}
           {projetoClarity && (
             <>
               {" "}
@@ -102,53 +163,11 @@ export function VelocidadePagina({ v, acoes, projetoClarity }: { v: DadosVelocid
       </Aviso>
 
       {leitura.diagnosticos.length ? (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-base font-[600] text-ink">O que deixa a página mais lenta e o que fazer</h3>
-          {leitura.diagnosticos.map((d) => (
-            <CartaoDiagnostico key={d.id} d={d} />
-          ))}
-        </div>
+        <CarrosselVelocidade diagnosticos={leitura.diagnosticos} titulo="O que deixa a página mais lenta e o que fazer" />
       ) : (
-        <Aviso tom="ok">Nada importante a corrigir na velocidade desta página.</Aviso>
+        <Aviso tom="ok">Nada importante a corrigir na velocidade desta página no {aparelho}.</Aviso>
       )}
     </div>
-  );
-}
-
-const FRENTE: Record<Diagnostico["frente"], string> = { carregamento: "Carregamento", resposta: "Resposta ao toque", estabilidade: "Estabilidade" };
-
-function CartaoDiagnostico({ d }: { d: Diagnostico }) {
-  const Icone = d.tom === "agir" ? IconeExclamacao : IconeInfo;
-  return (
-    <article className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-5 shadow-card">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 items-start gap-2">
-          <Icone tamanho={18} className={`mt-0.5 shrink-0 ${d.tom === "agir" ? "text-warn" : "text-ink-3"}`} />
-          <div className="min-w-0">
-            <h4 className="text-base font-[600] text-ink">{d.titulo}</h4>
-            <p className="text-xs text-ink-3">
-              {FRENTE[d.frente]} · {d.tom === "agir" ? "vale corrigir" : "melhoria menor"}
-            </p>
-          </div>
-        </div>
-        {d.ganho && <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-[600] whitespace-nowrap text-accent-text">{d.ganho}</span>}
-      </header>
-      <p className="text-sm text-ink-2">{d.porque}</p>
-      <p className="text-sm text-ink">
-        <strong className="font-[600]">O que fazer: </strong>
-        {d.acao}
-      </p>
-      {d.detalhes.length > 0 && (
-        <details className="group text-sm">
-          <summary className="cursor-pointer font-[550] text-accent-text">Detalhes técnicos</summary>
-          <ul className="mt-2 flex flex-col gap-1 rounded-md bg-sunken p-3 font-mono text-xs break-all text-ink-2">
-            {d.detalhes.map((x) => (
-              <li key={x}>{x}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </article>
   );
 }
 
@@ -190,4 +209,3 @@ function Faixa({ rotulo, valor, dist, categoria: cat, children }: { rotulo: stri
     </div>
   );
 }
-

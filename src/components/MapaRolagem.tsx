@@ -43,7 +43,7 @@ export function MapaRolagem({ aparelho, e, captura }: { aparelho: Aparelho; e: E
 
       {curva ? (
         <>
-          <div className={captura ? "grid gap-5 sm:grid-cols-[minmax(0,1fr)_168px]" : ""}>
+          <div className={captura ? `grid gap-5 ${aparelho === "PC" ? "sm:grid-cols-[minmax(0,1fr)_280px]" : "sm:grid-cols-[minmax(0,1fr)_168px]"}` : ""}>
           <ol className={`flex flex-col ${pouco ? "opacity-60" : ""}`} aria-label={`Rolagem no ${NOME_APARELHO[aparelho].toLowerCase()}`}>
             {curva.map((f, i) => (
               <li key={i} className="flex flex-col">
@@ -72,7 +72,7 @@ export function MapaRolagem({ aparelho, e, captura }: { aparelho: Aparelho; e: E
               </li>
             ))}
           </ol>
-          {captura && <PaginaRolavel captura={captura} curva={curva} metade={metade} primeiraTela={primeiraTela} />}
+          {captura && <PaginaRolavel captura={captura} curva={curva} metade={metade} primeiraTela={primeiraTela} aparelho={NOME_APARELHO[aparelho].toLowerCase()} />}
           </div>
           <p className="text-sm text-ink-2">
             {metade > 0 ? (
@@ -87,7 +87,7 @@ export function MapaRolagem({ aparelho, e, captura }: { aparelho: Aparelho; e: E
             ; {pct(curva[9], 0)} chegam ao trecho final.{" "}
             {primeiraTela ? (
               <>
-                A primeira tela do celular mostra só <strong className="font-[600] text-ink">{pct(primeiraTela, 0)} desta página</strong>: o que está abaixo disso, só vê quem rola.
+                A primeira tela do {NOME_APARELHO[aparelho].toLowerCase()} mostra só <strong className="font-[600] text-ink">{pct(primeiraTela, 0)} desta página</strong>: o que está abaixo disso, só vê quem rola.
               </>
             ) : (
               "As porcentagens são da página inteira, não da tela: numa página longa, a primeira tela do celular é só o começo da régua."
@@ -125,14 +125,14 @@ export function MapaRolagem({ aparelho, e, captura }: { aparelho: Aparelho; e: E
  * A página inteira (captura do teste de velocidade) numa janela rolável, escurecida onde menos gente chega,
  * com a porcentagem de visitas a cada 10% da altura, o fim da primeira tela e onde metade já saiu.
  */
-function PaginaRolavel({ captura, curva, metade, primeiraTela }: { captura: CapturaPagina; curva: number[]; metade: number; primeiraTela: number | null }) {
+function PaginaRolavel({ captura, curva, metade, primeiraTela, aparelho }: { captura: CapturaPagina; curva: number[]; metade: number; primeiraTela: number | null; aparelho: string }) {
   return (
     <figure className="flex flex-col gap-1.5">
-      <figcaption className="text-xs text-ink-3">A página no celular (role para ver)</figcaption>
+      <figcaption className="text-xs text-ink-3">A página no {aparelho} (role para ver)</figcaption>
       <div className="relative h-[440px] overflow-y-auto overscroll-contain rounded-md border border-line-strong bg-sunken" tabIndex={0} aria-label="Captura da página inteira com a rolagem das visitas">
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element -- URL assinada do Storage, com validade de 1 h */}
-          <img src={captura.url} alt="Página de destino inteira, como aparece no celular" className="block h-auto w-full" loading="lazy" />
+          <img src={captura.url} alt={`Página de destino inteira, como aparece no ${aparelho}`} className="block h-auto w-full" loading="lazy" />
           {curva.slice(0, 10).map((f, i) => (
             <div key={`sombra-${i}`} className="absolute inset-x-0" style={{ top: `${i * 10}%`, height: "10%", background: `rgb(15 23 42 / ${((1 - f) * 0.62).toFixed(2)})` }} aria-hidden="true" />
           ))}
@@ -156,7 +156,7 @@ function PaginaRolavel({ captura, curva, metade, primeiraTela }: { captura: Capt
 const COR_APARELHO: Record<Aparelho, string> = { Mobile: "var(--color-accent)", PC: "var(--color-ad-3)", Tablet: "var(--color-ad-6)" };
 
 /** Barra única com a divisão das visitas por aparelho. */
-export function VisitasPorAparelho({ porAparelho }: { porAparelho: Partial<Record<Aparelho, ExperienciaAparelho>> }) {
+export function VisitasPorAparelho({ porAparelho, empilhado }: { porAparelho: Partial<Record<Aparelho, ExperienciaAparelho>>; empilhado?: boolean }) {
   const itens = (Object.entries(porAparelho) as Array<[Aparelho, ExperienciaAparelho]>).filter(([, e]) => e.sessoes > 0).sort((a, b) => b[1].sessoes - a[1].sessoes);
   const total = itens.reduce((s, [, e]) => s + e.sessoes, 0);
   if (!total) return null;
@@ -168,7 +168,7 @@ export function VisitasPorAparelho({ porAparelho }: { porAparelho: Partial<Recor
           <div key={a} style={{ width: `${(e.sessoes / total) * 100}%`, background: COR_APARELHO[a] }} title={`${NOME_APARELHO[a]}: ${inteiro(e.sessoes)} visitas`} />
         ))}
       </div>
-      <ul className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <ul className={empilhado ? "flex flex-col gap-2 text-sm" : "flex flex-wrap gap-x-6 gap-y-2 text-sm"}>
         {itens.map(([a, e]) => (
           <li key={a} className="flex items-center gap-2">
             <span className="size-2.5 rounded-full" style={{ background: COR_APARELHO[a] }} aria-hidden="true" />
