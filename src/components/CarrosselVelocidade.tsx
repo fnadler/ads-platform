@@ -40,6 +40,7 @@ export function CarrosselVelocidade({ diagnosticos, titulo, extra }: { diagnosti
         extra={extra}
         rotulos={["Itens anteriores", "Próximos itens"]}
         quantidade={diagnosticos.length}
+        nivel={3}
       >
         {diagnosticos.map((d) => (
           <article key={d.id} className={`flex w-[272px] shrink-0 snap-start flex-col gap-3 rounded-lg border border-t-[3px] border-line bg-surface p-4 shadow-card sm:w-[296px] ${ESTILO[d.tom].borda}`}>

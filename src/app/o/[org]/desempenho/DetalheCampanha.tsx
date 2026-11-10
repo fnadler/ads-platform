@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeChevron, IconeExclamacao, IconeExterno, IconeSeta, IconeX } from "@/components/Icones";
 import { CarrosselAchados, type LinksArea } from "@/components/CarrosselAchados";
-import { MapaRolagem, VisitasPorAparelho, type CapturaPagina } from "@/components/MapaRolagem";
+import { MapaRolagem, PreviewPagina, VisitasPorAparelho, type CapturaPagina } from "@/components/MapaRolagem";
+import { AbasAparelho } from "@/components/AbasAparelho";
 import { VelocidadePagina as SecaoVelocidade } from "@/components/VelocidadePagina";
 import { BlocoGrupos, destaquesGrupos, nomeNavegador, quemNoNavegador, resumoApps, SinaisProblema, TabelaGrupos, type LinhaGrupo } from "@/components/OrigemVisitas";
 import { VisualizarAnuncio, type PecaAnuncio } from "@/components/VisualizarAnuncio";
@@ -30,9 +31,6 @@ const rotuloAba = (aba: Aba, funil: Funil) =>
     pagina: "Página",
     vendas: funil === "venda_direta" ? "Vendas" : "Cadastros e vendas",
   })[aba];
-
-const NOME_APARELHO = { Mobile: "Celular", PC: "Computador", Tablet: "Tablet" } as const;
-const juntarNomes = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} e ${xs.at(-1)}` : (xs[0] ?? ""));
 
 const precisaAtencao = (a: Achado) => a.tom === "agir" || a.tom === "observar";
 const PIOR: TomAchado[] = ["agir", "observar", "aguardar", "ok"];
@@ -67,7 +65,8 @@ export interface DadosDetalhe {
 export function DetalheCampanha(d: DadosDetalhe) {
   const achados = d.leitura.achados;
   return (
-    <div className="grid gap-5">
+    // Coluna com mínimo 0: um carrossel (rolagem lateral própria) não alarga a página.
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <nav aria-label="Partes da campanha" className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1">
         {ABAS.map((aba) => {
           const daAba = aba === "geral" ? [] : achados.filter((a) => a.area === aba && precisaAtencao(a));
@@ -103,9 +102,9 @@ export function DetalheCampanha(d: DadosDetalhe) {
 /** Seção dentro de uma aba: título curto e o conteúdo. */
 function Secao({ titulo, children, acoes }: { titulo: string; children: ReactNode; acoes?: ReactNode }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex min-w-0 flex-col gap-3 pt-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <h2 className="text-base font-[600] text-ink">{titulo}</h2>
+        <h2 className="text-xl font-[650] tracking-[-0.01em] text-ink">{titulo}</h2>
         {acoes}
       </div>
       {children}
@@ -588,7 +587,6 @@ function AbaPagina(d: DadosDetalhe) {
   const comVisitas = exp ? APARELHOS.filter((a) => (exp.porAparelho[a]?.sessoes ?? 0) > 0).sort((a, b) => exp.porAparelho[b]!.sessoes - exp.porAparelho[a]!.sessoes) : [];
   const suficientes = comVisitas.filter((a) => exp!.porAparelho[a]!.sessoes >= 10);
   const comMapa = suficientes.length ? suficientes : comVisitas.slice(0, 1);
-  const poucos = comVisitas.filter((a) => !comMapa.includes(a));
   // A captura do teste de velocidade entra no mapa de cada aparelho quando é da mesma página que as visitas.
   const v = d.velocidade;
   const capturaDe = (t: TesteVelocidade | undefined): CapturaPagina | null =>
@@ -684,16 +682,35 @@ function AbaPagina(d: DadosDetalhe) {
                       )}
                     </div>
                   </div>
-                  <div className="flex min-w-0 flex-col gap-4">
-                    {comMapa.map((a) => (
-                      <MapaRolagem key={a} aparelho={a} e={exp.porAparelho[a]!} captura={capturas[a] ?? null} />
-                    ))}
-                    {poucos.length > 0 && (
-                      <p className="text-xs text-ink-3">
-                        {juntarNomes(poucos.map((a) => `${NOME_APARELHO[a]} (${inteiro(exp.porAparelho[a]!.sessoes)})`))}: poucas visitas para desenhar a rolagem.
-                      </p>
-                    )}
-                  </div>
+                  <AbasAparelho
+                    abas={[
+                      {
+                        chave: "celular",
+                        rotulo: "Celular",
+                        detalhe: participacao ? `${pct(participacao.celular, 0)} das visitas` : undefined,
+                        conteudo: (
+                          <div className="flex flex-col gap-4">
+                            {comMapa.includes("Mobile") ? (
+                              <MapaRolagem aparelho="Mobile" e={exp.porAparelho.Mobile!} captura={capturas.Mobile ?? null} />
+                            ) : (
+                              <PreviewPagina aparelho="Mobile" sessoes={exp.porAparelho.Mobile?.sessoes ?? 0} captura={capturas.Mobile ?? null} />
+                            )}
+                            {comMapa.includes("Tablet") && <MapaRolagem aparelho="Tablet" e={exp.porAparelho.Tablet!} />}
+                          </div>
+                        ),
+                      },
+                      {
+                        chave: "computador",
+                        rotulo: "Computador",
+                        detalhe: participacao ? `${pct(participacao.computador, 0)} das visitas` : undefined,
+                        conteudo: comMapa.includes("PC") ? (
+                          <MapaRolagem aparelho="PC" e={exp.porAparelho.PC!} captura={capturas.PC ?? null} />
+                        ) : (
+                          <PreviewPagina aparelho="PC" sessoes={exp.porAparelho.PC?.sessoes ?? 0} captura={capturas.PC ?? null} />
+                        ),
+                      },
+                    ]}
+                  />
                 </div>
               </>
             ) : (

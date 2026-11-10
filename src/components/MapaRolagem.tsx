@@ -125,7 +125,7 @@ export function MapaRolagem({ aparelho, e, captura }: { aparelho: Aparelho; e: E
  * A página inteira (captura do teste de velocidade) numa janela rolável, escurecida onde menos gente chega,
  * com a porcentagem de visitas a cada 10% da altura, o fim da primeira tela e onde metade já saiu.
  */
-function PaginaRolavel({ captura, curva, metade, primeiraTela, aparelho }: { captura: CapturaPagina; curva: number[]; metade: number; primeiraTela: number | null; aparelho: string }) {
+function PaginaRolavel({ captura, curva, metade, primeiraTela, aparelho }: { captura: CapturaPagina; curva: number[] | null; metade: number; primeiraTela: number | null; aparelho: string }) {
   return (
     <figure className="flex flex-col gap-1.5">
       <figcaption className="text-xs text-ink-3">A página no {aparelho} (role para ver)</figcaption>
@@ -133,10 +133,10 @@ function PaginaRolavel({ captura, curva, metade, primeiraTela, aparelho }: { cap
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element -- URL assinada do Storage, com validade de 1 h */}
           <img src={captura.url} alt={`Página de destino inteira, como aparece no ${aparelho}`} className="block h-auto w-full" loading="lazy" />
-          {curva.slice(0, 10).map((f, i) => (
+          {curva?.slice(0, 10).map((f, i) => (
             <div key={`sombra-${i}`} className="absolute inset-x-0" style={{ top: `${i * 10}%`, height: "10%", background: `rgb(15 23 42 / ${((1 - f) * 0.62).toFixed(2)})` }} aria-hidden="true" />
           ))}
-          {curva.slice(1, 10).map((f, j) => (
+          {curva?.slice(1, 10).map((f, j) => (
             <div key={`faixa-${j}`} className="absolute inset-x-0 border-t border-white/60" style={{ top: `${(j + 1) * 10}%` }} aria-hidden="true">
               <span className="absolute right-1 top-1 rounded bg-slate-900/80 px-1.5 py-0.5 text-[10px] font-[600] tabular-nums text-white">{pct(f, 0)} chegam</span>
             </div>
@@ -150,6 +150,38 @@ function PaginaRolavel({ captura, curva, metade, primeiraTela, aparelho }: { cap
         </div>
       </div>
     </figure>
+  );
+}
+
+/**
+ * Sem visitas suficientes do aparelho para medir a rolagem: só a página como aparece nele (captura do teste
+ * de velocidade), com o fim da primeira tela.
+ */
+export function PreviewPagina({ aparelho, sessoes, captura }: { aparelho: Aparelho; sessoes: number; captura: CapturaPagina | null }) {
+  const nome = NOME_APARELHO[aparelho].toLowerCase();
+  const primeiraTela = captura && captura.altura > captura.tela ? captura.tela / captura.altura : null;
+  return (
+    <article className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-5 shadow-card">
+      <header className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-base font-[600] text-ink">{NOME_APARELHO[aparelho]}</h3>
+          <span className="text-sm text-ink-3">
+            {inteiro(sessoes)} {sessoes === 1 ? "visita" : "visitas"}
+          </span>
+        </div>
+        <p className="text-sm text-ink-2">
+          {sessoes ? `Poucas visitas da campanha no ${nome} para medir até onde descem.` : `A campanha não teve visitas no ${nome} no período.`}
+          {captura && primeiraTela ? ` Abaixo, a página como aparece no ${nome}: a primeira tela mostra ${pct(primeiraTela, 0)} dela.` : ""}
+        </p>
+      </header>
+      {captura ? (
+        <div className={aparelho === "PC" ? "w-full max-w-[420px]" : "w-full max-w-[220px]"}>
+          <PaginaRolavel captura={captura} curva={null} metade={-1} primeiraTela={primeiraTela} aparelho={nome} />
+        </div>
+      ) : (
+        <p className="text-sm text-ink-3">A captura da página aparece depois do próximo teste de velocidade.</p>
+      )}
+    </article>
   );
 }
 

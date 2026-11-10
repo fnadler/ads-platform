@@ -12,9 +12,12 @@ export function Trilho({
   extra,
   rotulos = ["Anteriores", "Próximos"],
   quantidade,
+  nivel = 2,
   children,
 }: {
   titulo: ReactNode;
+  /** 2: título de seção (como os das outras partes da aba); 3: dentro de uma seção. */
+  nivel?: 2 | 3;
   nota?: ReactNode;
   /** À direita do título, antes das setas (resumo, botões). */
   extra?: ReactNode;
@@ -45,7 +48,7 @@ export function Trilho({
     <section className="flex min-w-0 flex-col gap-3" aria-label={typeof titulo === "string" ? titulo : undefined}>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h2 className="text-base font-[600] text-ink">{titulo}</h2>
+          {nivel === 2 ? <h2 className="text-xl font-[650] tracking-[-0.01em] text-ink">{titulo}</h2> : <h3 className="text-base font-[600] text-ink">{titulo}</h3>}
           {nota && <p className="mt-0.5 text-xs text-ink-3">{nota}</p>}
         </div>
         <div className="flex items-center gap-3">
