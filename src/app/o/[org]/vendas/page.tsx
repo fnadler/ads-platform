@@ -1,43 +1,33 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Formulario } from "@/components/Formulario";
-import { Aviso, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
+import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
+import { Aviso, Botao, Cartao, Indicador, Indicadores, Selecao, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { listarCampanhas } from "@/lib/campanhas/lista";
 import { dataHora, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { importarCsv } from "@/lib/vendas/acoes";
+import { carregarLeadsVendas, SEM_CAMPANHA } from "@/lib/vendas/lista";
 
 export const metadata: Metadata = { title: "Leads e vendas" };
 
-const ATRIBUICAO: Record<string, { rotulo: string; tom: Tom }> = {
-  ultimo_toque: { rotulo: "Anúncio (último toque)", tom: "ok" },
-  primeiro_toque: { rotulo: "Anúncio (primeiro toque)", tom: "ok" },
-  so_campanha: { rotulo: "Só campanha", tom: "alerta" },
-  nenhuma: { rotulo: "Sem anúncio", tom: "info" },
-};
-
-const SITUACAO_VENDA: Record<string, { rotulo: string; tom: Tom }> = {
-  pagamento: { rotulo: "Paga", tom: "ok" },
-  pendente: { rotulo: "Aguardando pagamento", tom: "alerta" },
-  expirada: { rotulo: "Não concluída", tom: "info" },
-  reembolso: { rotulo: "Reembolso", tom: "erro" },
-  chargeback: { rotulo: "Chargeback", tom: "erro" },
-};
-
 const hojeMenos = (dias: number, fuso: string) => new Date(Date.now() - dias * 86_400_000).toLocaleDateString("sv-SE", { timeZone: fuso });
 
-export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
+export default async function Vendas({ params, searchParams }: PageProps<"/o/[org]/vendas">) {
   const { org: slug } = await params;
+  const busca = await searchParams;
+  const filtro = typeof busca.campanha === "string" && (busca.campanha === SEM_CAMPANHA || /^\d+$/.test(busca.campanha)) ? busca.campanha : null;
   const { org, papel, supabase } = await exigirOrganizacao(slug);
-  const [{ data: cobertura }, { data: leads }, { data: vendas }, { data: nomes }] = await Promise.all([
+  const [{ data: cobertura }, dados, campanhas] = await Promise.all([
     supabase.rpc("cobertura_atribuicao", { p_org: org.id, p_de: hojeMenos(29, org.fuso), p_ate: hojeMenos(0, org.fuso) }).single<Record<string, number>>(),
-    supabase
-      .from("leads")
-      .select("id_externo, criado_em, utm_source, utm_campaign, utm_content, ad_id, atribuicao, teste_iniciado_em, teste_cancelado_em, primeiro_pagamento_em, codigo_teste")
-      .eq("organizacao_id", org.id)
-      .order("criado_em", { ascending: false })
-      .limit(50),
-    supabase.from("vendas_atribuidas").select("id_externo, tipo, valor, moeda, ocorrida_em, ad_id, lead_id_externo, origem").eq("organizacao_id", org.id).order("ocorrida_em", { ascending: false }).limit(50),
-    supabase.from("meta_anuncios").select("ad_id, nome").eq("organizacao_id", org.id),
+    carregarLeadsVendas(supabase, org.id, { campanha: filtro }),
+    listarCampanhas(supabase, org.id),
   ]);
+  const naMeta = campanhas.filter((c): c is typeof c & { metaId: string } => !!c.metaId);
+  const nomeFiltro = filtro === SEM_CAMPANHA ? "Sem campanha" : filtro ? (naMeta.find((c) => c.metaId === filtro)?.nome ?? dados.nomeCampanha.get(filtro) ?? filtro) : null;
+  const linkCampanha = (id: string) => rotaDesempenho(slug, id);
+  const comTeste = org.funil === "cadastro_teste_venda";
   // Eventos recusados na última semana (sem isso, uma falha de envio só apareceria no log de quem enviou).
   const { data: recusados, count: totalRecusados } = temPapel(papel, "gestor")
     ? await supabase
@@ -49,14 +39,32 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
         .order("recebido_em", { ascending: false })
         .limit(1)
     : { data: null, count: 0 };
-  const nomeAnuncio = new Map((nomes ?? []).map((n) => [n.ad_id, n.nome]));
   const c = cobertura ?? { leads: 0, leads_com_anuncio: 0, vendas: 0, vendas_com_anuncio: 0, receita: 0, receita_com_anuncio: 0 };
   const coberturaReceita = razao(Number(c.receita_com_anuncio), Number(c.receita));
 
   return (
     <>
-      <Titulo sobrancelha="Leads e vendas" descricao="O que chegou das fontes de venda e quanto disso chega até o anúncio de origem.">
-        O que chegou à fonte de venda
+      <Titulo
+        sobrancelha="Leads e vendas"
+        descricao="Tudo o que chegou das fontes de venda, de todas as campanhas e também o que veio sem campanha. Para ver uma campanha só, filtre abaixo ou abra a campanha em Desempenho."
+        acoes={
+          <form method="get" className="flex flex-wrap items-end gap-2">
+            <Selecao rotulo="Campanha" name="campanha" defaultValue={filtro ?? ""} className="min-w-[220px]">
+              <option value="">Todas as campanhas</option>
+              {naMeta.map((c) => (
+                <option key={c.metaId} value={c.metaId}>
+                  {c.nome}
+                </option>
+              ))}
+              <option value={SEM_CAMPANHA}>Sem campanha</option>
+            </Selecao>
+            <Botao type="submit" variante="secundario">
+              Ver
+            </Botao>
+          </form>
+        }
+      >
+        {nomeFiltro ?? "O que chegou à fonte de venda"}
       </Titulo>
       <div className="grid gap-6">
         {!!totalRecusados && (
@@ -65,6 +73,18 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
             <span className="font-mono text-xs">{recusados?.[0]?.erro}</span>
           </Aviso>
         )}
+        {filtro && (
+          <Aviso>
+            Mostrando só {filtro === SEM_CAMPANHA ? "o que chegou sem campanha: clientes orgânicos, de antes da campanha ou de anúncios sem rastreio" : <>a campanha <strong>{nomeFiltro}</strong></>}.{" "}
+            {filtro !== SEM_CAMPANHA && (
+              <>
+                Os números dela estão em <Link href={linkCampanha(filtro)}>Desempenho</Link>.{" "}
+              </>
+            )}
+            <Link href={rotaOrg(slug, "/vendas")}>Ver todas</Link>
+          </Aviso>
+        )}
+        {!filtro && (
         <Cartao titulo="Cobertura de atribuição (30 dias)" descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
           <Indicadores className="sm:grid-cols-3">
             <Indicador
@@ -86,73 +106,28 @@ export default async function Vendas({ params }: PageProps<"/o/[org]/vendas">) {
           </Indicadores>
           <p className="mt-3 text-sm text-ink-2">Inclui vendas de clientes orgânicos e de antes da campanha: cobertura abaixo de 100% é esperada. O que importa é que os leads vindos de anúncio cheguem com o anúncio.</p>
         </Cartao>
+        )}
 
         <Cartao titulo="Últimos leads" rente>
-          {leads?.length ? (
-            <Tabela>
-              <thead>
-                <tr>
-                  <th>Quando</th>
-                  <th>Origem</th>
-                  <th>Atribuição</th>
-                  <th>Teste</th>
-                  <th>Pagante</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((l) => (
-                  <tr key={l.id_externo}>
-                    <td className="whitespace-nowrap">{dataHora(l.criado_em, org.fuso)}</td>
-                    <td className="text-xs">
-                      {l.codigo_teste && <Etiqueta tom="alerta">teste de rastreio</Etiqueta>} {l.utm_source ?? "—"}
-                      {l.utm_campaign && <div className="text-ink-2">{l.utm_campaign}</div>}
-                    </td>
-                    <td className="text-xs">
-                      <Etiqueta tom={ATRIBUICAO[l.atribuicao].tom}>{ATRIBUICAO[l.atribuicao].rotulo}</Etiqueta>
-                      {l.ad_id && <div className="mt-1 text-ink-2">{nomeAnuncio.get(l.ad_id) ?? l.ad_id}</div>}
-                    </td>
-                    <td>{l.teste_cancelado_em && !l.primeiro_pagamento_em ? <Etiqueta tom="alerta">cancelado</Etiqueta> : l.teste_iniciado_em ? "sim" : ""}</td>
-                    <td>{l.primeiro_pagamento_em ? "sim" : ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Tabela>
+          {dados.leads.length ? (
+            <TabelaLeads dados={dados} fuso={org.fuso} linkCampanha={linkCampanha} comTeste={comTeste} />
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo="Nenhum lead recebido ainda">Configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio).</Vazio>
+              <Vazio titulo={filtro ? "Nenhum lead neste filtro" : "Nenhum lead recebido ainda"}>
+                {filtro ? "Escolha outra campanha ou veja todas." : "Configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio)."}
+              </Vazio>
             </div>
           )}
         </Cartao>
 
         <Cartao titulo="Últimas vendas" rente>
-          {vendas?.length ? (
-            <Tabela>
-              <thead>
-                <tr>
-                  <th>Quando</th>
-                  <th>Valor</th>
-                  <th>Situação</th>
-                  <th>Fonte</th>
-                  <th>Anúncio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendas.map((v) => (
-                  <tr key={`${v.origem}:${v.id_externo}`}>
-                    <td className="whitespace-nowrap">{dataHora(v.ocorrida_em, org.fuso)}</td>
-                    <td className={`num whitespace-nowrap ${Number(v.valor) < 0 ? "text-err" : ["pendente", "expirada"].includes(v.tipo) ? "text-ink-3" : ""}`}>{moeda(Number(v.valor), v.moeda)}</td>
-                    <td>
-                      <Etiqueta tom={SITUACAO_VENDA[v.tipo]?.tom ?? "info"}>{SITUACAO_VENDA[v.tipo]?.rotulo ?? v.tipo}</Etiqueta>
-                    </td>
-                    <td>{v.origem}</td>
-                    <td className="text-xs">{v.ad_id ? (nomeAnuncio.get(v.ad_id) ?? v.ad_id) : <span className="text-ink-2">sem anúncio</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Tabela>
+          {dados.vendas.length ? (
+            <TabelaVendas dados={dados} fuso={org.fuso} linkCampanha={linkCampanha} />
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo="Nenhuma venda ainda">Conecte sua plataforma de venda (Configurações) ou importe um CSV.</Vazio>
+              <Vazio titulo={filtro ? "Nenhuma venda neste filtro" : "Nenhuma venda ainda"}>
+                {filtro ? "Escolha outra campanha ou veja todas." : "Conecte sua plataforma de venda (Configurações) ou importe um CSV."}
+              </Vazio>
             </div>
           )}
         </Cartao>

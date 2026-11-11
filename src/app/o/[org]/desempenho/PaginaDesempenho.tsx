@@ -4,9 +4,10 @@ import { IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Cartao, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { campanhaMontada } from "@/lib/campanhas/lista";
-import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { decimal, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
+import { carregarLeadsVendas } from "@/lib/vendas/lista";
 import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
 import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
 import { somar, zero, type Linha, type Soma } from "./soma";
@@ -103,7 +104,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
     return `${rotaDesempenho(slug, tudo.campanha ? String(tudo.campanha) : null)}${q.size ? `?${q}` : ""}`;
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
-  const [pecas, experiencia, velocidade, acoes] = await Promise.all([
+  const [pecas, experiencia, velocidade, acoes, leadsVendas] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -122,6 +123,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           rastreio: rotaOrg(slug, "/rastreio"),
         })
       : undefined,
+    campanha && aba === "vendas" ? carregarLeadsVendas(supabase, org.id, { campanha, desde: inicioDoDia(de, org.fuso) }) : null,
   ]);
   // Sem dados no período, o nome vem da leitura dos anúncios; a ponte leva à montagem, se a campanha nasceu aqui.
   const [nomeLido, montadaId] = campanha
@@ -231,6 +233,9 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           experiencia={experiencia}
           velocidade={velocidade}
           acoes={acoes}
+          leadsVendas={leadsVendas}
+          fuso={org.fuso}
+          rotaVendas={`${rotaOrg(slug, "/vendas")}?campanha=${campanha}`}
         />
       ) : (
         <div className="grid gap-5">

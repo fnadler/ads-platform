@@ -15,6 +15,8 @@ import { Aviso, BotaoLink, Cartao, corAnuncio, Indicador, Indicadores, Tabela, V
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import type { LeadsVendas } from "@/lib/vendas/lista";
+import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
 import { somar, zero, type Linha, type Soma } from "./soma";
 import { celulasFunil, colunasFunil, destaque, roas, rotuloCancelados } from "./tabelas";
 
@@ -60,6 +62,11 @@ export interface DadosDetalhe {
   velocidade?: VelocidadePagina | null;
   /** O que as sugestões e os anúncios podem fazer na Meta. */
   acoes?: ContextoAcoes;
+  /** Últimos leads e vendas desta campanha no período (só na aba Cadastros e vendas). */
+  leadsVendas?: LeadsVendas | null;
+  fuso: string;
+  /** Leads e vendas (organização) já filtrado nesta campanha. */
+  rotaVendas: string;
 }
 
 export function DetalheCampanha(d: DadosDetalhe) {
@@ -915,6 +922,8 @@ function AbaVendas(d: DadosDetalhe) {
         </Cartao>
       )}
 
+      {d.leadsVendas && <ListasDaCampanha d={d} lv={d.leadsVendas} />}
+
       <TodosNumeros titulo={direta ? "Por que as compras da Meta e as vendas são diferentes?" : "Por que os cadastros da Meta e do sistema são diferentes?"}>
         <p className="max-w-3xl px-5 py-4 text-sm leading-relaxed text-ink-2">
           {direta ? (
@@ -932,6 +941,40 @@ function AbaVendas(d: DadosDetalhe) {
           )}
         </p>
       </TodosNumeros>
+    </>
+  );
+}
+
+/** Quem chegou por esta campanha no período: os últimos cadastros e vendas, com o anúncio de cada um. */
+function ListasDaCampanha({ d, lv }: { d: DadosDetalhe; lv: LeadsVendas }) {
+  const direta = d.funil === "venda_direta";
+  const verTudo = (
+    <Link href={d.rotaVendas} className="text-sm font-medium text-accent-text">
+      Ver em Leads e vendas
+    </Link>
+  );
+  return (
+    <>
+      {!direta && (
+        <Cartao titulo="Últimos cadastros desta campanha" descricao="Os que chegaram ao seu sistema no período, com o anúncio de origem." acoes={verTudo} rente>
+          {lv.leads.length ? (
+            <TabelaLeads dados={lv} fuso={d.fuso} comTeste={d.funil === "cadastro_teste_venda"} />
+          ) : (
+            <div className="px-5 pb-5">
+              <Vazio titulo="Nenhum cadastro no período">Escolha um período maior ou confira o rastreio da campanha.</Vazio>
+            </div>
+          )}
+        </Cartao>
+      )}
+      <Cartao titulo="Últimas vendas desta campanha" descricao="Pagamentos, pendentes e devoluções no período, ligados a esta campanha." acoes={direta ? verTudo : undefined} rente>
+        {lv.vendas.length ? (
+          <TabelaVendas dados={lv} fuso={d.fuso} />
+        ) : (
+          <div className="px-5 pb-5">
+            <Vazio titulo="Nenhuma venda no período">As vendas aparecem aqui quando a plataforma de venda confirma, com o anúncio de origem.</Vazio>
+          </div>
+        )}
+      </Cartao>
     </>
   );
 }
