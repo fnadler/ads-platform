@@ -5,28 +5,33 @@ import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
 import { Aviso, Botao, Cartao, Indicador, Indicadores, Selecao, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { listarCampanhas } from "@/lib/campanhas/lista";
-import { dataHora, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { SeletorPeriodo } from "@/components/SeletorPeriodo";
+import { dataHora, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { comDias, diaNoFuso, intervalo, lerDias } from "@/lib/periodo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { importarCsv } from "@/lib/vendas/acoes";
 import { carregarLeadsVendas, SEM_CAMPANHA } from "@/lib/vendas/lista";
 
 export const metadata: Metadata = { title: "Leads e vendas" };
 
-const hojeMenos = (dias: number, fuso: string) => new Date(Date.now() - dias * 86_400_000).toLocaleDateString("sv-SE", { timeZone: fuso });
 
 export default async function Vendas({ params, searchParams }: PageProps<"/o/[org]/vendas">) {
   const { org: slug } = await params;
   const busca = await searchParams;
   const filtro = typeof busca.campanha === "string" && (busca.campanha === SEM_CAMPANHA || /^\d+$/.test(busca.campanha)) ? busca.campanha : null;
+  const dias = lerDias(busca.dias);
   const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { de, ate } = intervalo(dias, org.fuso);
   const [{ data: cobertura }, dados, campanhas] = await Promise.all([
-    supabase.rpc("cobertura_atribuicao", { p_org: org.id, p_de: hojeMenos(29, org.fuso), p_ate: hojeMenos(0, org.fuso) }).single<Record<string, number>>(),
-    carregarLeadsVendas(supabase, org.id, { campanha: filtro }),
+    supabase.rpc("cobertura_atribuicao", { p_org: org.id, p_de: de, p_ate: ate }).single<Record<string, number>>(),
+    carregarLeadsVendas(supabase, org.id, { campanha: filtro, desde: inicioDoDia(de, org.fuso) }),
     listarCampanhas(supabase, org.id),
   ]);
   const naMeta = campanhas.filter((c): c is typeof c & { metaId: string } => !!c.metaId);
   const nomeFiltro = filtro === SEM_CAMPANHA ? "Sem campanha" : filtro ? (naMeta.find((c) => c.metaId === filtro)?.nome ?? dados.nomeCampanha.get(filtro) ?? filtro) : null;
-  const linkCampanha = (id: string) => rotaDesempenho(slug, id);
+  const linkCampanha = (id: string) => comDias(rotaDesempenho(slug, id), dias);
+  const linkVendas = (extra: { campanha?: string | null; dias?: number }) =>
+    comDias(`${rotaOrg(slug, "/vendas")}${(extra.campanha === undefined ? filtro : extra.campanha) ? `?campanha=${extra.campanha === undefined ? filtro : extra.campanha}` : ""}`, extra.dias ?? dias);
   const comTeste = org.funil === "cadastro_teste_venda";
   // Eventos recusados na última semana (sem isso, uma falha de envio só apareceria no log de quem enviou).
   const { data: recusados, count: totalRecusados } = temPapel(papel, "gestor")
@@ -35,7 +40,7 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
         .select("erro, recebido_em", { count: "exact" })
         .eq("organizacao_id", org.id)
         .not("erro", "is", null)
-        .gte("recebido_em", hojeMenos(7, org.fuso))
+        .gte("recebido_em", inicioDoDia(diaNoFuso(7, org.fuso), org.fuso))
         .order("recebido_em", { ascending: false })
         .limit(1)
     : { data: null, count: 0 };
@@ -48,7 +53,9 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
         sobrancelha="Leads e vendas"
         descricao="Tudo o que chegou das fontes de venda, de todas as campanhas e também o que veio sem campanha. Para ver uma campanha só, filtre abaixo ou abra a campanha em Desempenho."
         acoes={
+          <div className="flex flex-wrap items-end gap-3">
           <form method="get" className="flex flex-wrap items-end gap-2">
+            {dias !== 7 && <input type="hidden" name="dias" value={dias} />}
             <Selecao rotulo="Campanha" name="campanha" defaultValue={filtro ?? ""} className="min-w-[220px]">
               <option value="">Todas as campanhas</option>
               {naMeta.map((c) => (
@@ -62,6 +69,8 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
               Ver
             </Botao>
           </form>
+          <SeletorPeriodo dias={dias} href={(d) => linkVendas({ dias: d })} />
+          </div>
         }
       >
         {nomeFiltro ?? "O que chegou à fonte de venda"}
@@ -81,11 +90,11 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
                 Os números dela estão em <Link href={linkCampanha(filtro)}>Desempenho</Link>.{" "}
               </>
             )}
-            <Link href={rotaOrg(slug, "/vendas")}>Ver todas</Link>
+            <Link href={linkVendas({ campanha: null })}>Ver todas</Link>
           </Aviso>
         )}
         {!filtro && (
-        <Cartao titulo="Cobertura de atribuição (30 dias)" descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
+        <Cartao titulo={`Cobertura de atribuição · últimos ${dias} dias`} descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
           <Indicadores className="sm:grid-cols-3">
             <Indicador
               rotulo="Leads com anúncio"
@@ -108,25 +117,25 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
         </Cartao>
         )}
 
-        <Cartao titulo="Últimos leads" rente>
+        <Cartao titulo={`Últimos leads · ${dias} dias`} rente>
           {dados.leads.length ? (
             <TabelaLeads dados={dados} fuso={org.fuso} linkCampanha={linkCampanha} comTeste={comTeste} />
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo={filtro ? "Nenhum lead neste filtro" : "Nenhum lead recebido ainda"}>
-                {filtro ? "Escolha outra campanha ou veja todas." : "Configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio)."}
+              <Vazio titulo={`Nenhum lead${filtro ? " neste filtro" : ""} nos últimos ${dias} dias`}>
+                {filtro ? "Escolha outra campanha, um período maior ou veja todas." : "Escolha um período maior. Se nunca chegou nenhum, configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio)."}
               </Vazio>
             </div>
           )}
         </Cartao>
 
-        <Cartao titulo="Últimas vendas" rente>
+        <Cartao titulo={`Últimas vendas · ${dias} dias`} rente>
           {dados.vendas.length ? (
             <TabelaVendas dados={dados} fuso={org.fuso} linkCampanha={linkCampanha} />
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo={filtro ? "Nenhuma venda neste filtro" : "Nenhuma venda ainda"}>
-                {filtro ? "Escolha outra campanha ou veja todas." : "Conecte sua plataforma de venda (Configurações) ou importe um CSV."}
+              <Vazio titulo={`Nenhuma venda${filtro ? " neste filtro" : ""} nos últimos ${dias} dias`}>
+                {filtro ? "Escolha outra campanha, um período maior ou veja todas." : "Escolha um período maior. Se nunca chegou nenhuma, conecte sua plataforma de venda (Configurações) ou importe um CSV."}
               </Vazio>
             </div>
           )}

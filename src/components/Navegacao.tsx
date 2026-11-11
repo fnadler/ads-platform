@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ComponentType } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense, type ComponentType } from "react";
+import { comDias, lerDias } from "@/lib/periodo";
 import {
   IconeAdmin,
   IconeCampanhas,
@@ -34,6 +35,8 @@ export interface ItemNavegacao {
   exato?: boolean;
   /** Outras rotas que contam como este item (ex.: Sincronizações dentro de Configurações). */
   tambem?: string[];
+  /** Leva junto o período escolhido (?dias=): as telas de Analisar mostram o mesmo período. */
+  periodo?: boolean;
 }
 
 /** Bloco do menu: Analisar (resultados) ou Gerenciar (montar e manter). Sem título, fica solto no fim. */
@@ -45,9 +48,26 @@ export interface SecaoNavegacao {
 const dentro = (atual: string, href: string) => atual === href || atual.startsWith(`${href}/`);
 const ativoEm = (atual: string, i: ItemNavegacao) => (i.exato ? atual === i.href : dentro(atual, i.href)) || !!i.tambem?.some((t) => dentro(atual, t));
 
+type Props = { secoes: SecaoNavegacao[]; modo?: "lateral" | "abas" };
+
 /** Menu lateral (desktop) ou abas em pílula que rolam na horizontal (mobile), separado em seções. */
-export function Navegacao({ secoes, modo = "lateral" }: { secoes: SecaoNavegacao[]; modo?: "lateral" | "abas" }) {
+export function Navegacao(props: Props) {
+  // A busca do endereço só é conhecida na requisição: enquanto isso, o menu sai sem o período.
+  return (
+    <Suspense fallback={<Menu {...props} dias={null} />}>
+      <MenuComPeriodo {...props} />
+    </Suspense>
+  );
+}
+
+function MenuComPeriodo(props: Props) {
+  const busca = useSearchParams();
+  return <Menu {...props} dias={busca.has("dias") ? lerDias(busca.get("dias")) : null} />;
+}
+
+function Menu({ secoes, modo = "lateral", dias }: Props & { dias: number | null }) {
   const atual = usePathname();
+  const destino = (i: ItemNavegacao) => (i.periodo ? comDias(i.href, dias) : i.href);
   if (modo === "abas")
     return (
       <nav aria-label="Áreas da organização" className="flex items-center gap-1 overflow-x-auto px-2 pb-2.5 [scrollbar-width:none]">
@@ -59,7 +79,7 @@ export function Navegacao({ secoes, modo = "lateral" }: { secoes: SecaoNavegacao
               return (
                 <Link
                   key={i.href}
-                  href={i.href}
+                  href={destino(i)}
                   aria-current={ativo ? "page" : undefined}
                   className={`flex min-h-10 flex-none items-center whitespace-nowrap rounded-[14px] px-3.5 text-[13.5px] no-underline ${
                     ativo ? "bg-accent font-semibold text-on-accent" : "text-chrome-ink-2 hover:bg-chrome-2 hover:text-chrome-ink"
@@ -88,7 +108,7 @@ export function Navegacao({ secoes, modo = "lateral" }: { secoes: SecaoNavegacao
             return (
               <Link
                 key={i.href}
-                href={i.href}
+                href={destino(i)}
                 aria-current={ativo ? "page" : undefined}
                 className={`flex min-h-[42px] items-center gap-3 rounded-[10px] px-3 text-base no-underline transition-colors ${
                   ativo ? "bg-accent font-semibold text-on-accent" : "text-chrome-ink-2 hover:bg-chrome-2 hover:text-chrome-ink"

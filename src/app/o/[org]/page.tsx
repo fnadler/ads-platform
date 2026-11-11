@@ -1,21 +1,59 @@
-import { IconeCheck, IconeSeta } from "@/components/Icones";
-import { GradeAchados, ResumoLeitura } from "@/components/LeituraCampanha";
-import { Aviso, BotaoLink, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
+import Link from "next/link";
+import type { ReactNode } from "react";
+import { IconeSeta } from "@/components/Icones";
+import { GradeAchados } from "@/components/LeituraCampanha";
+import { SeletorPeriodo } from "@/components/SeletorPeriodo";
+import { Aviso, BotaoLink, Cartao, Indicador, Indicadores, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
-import { dataHora, inteiro } from "@/lib/formato";
+import { dataHora, inteiro, moeda, pct } from "@/lib/formato";
 import { campanhasAtivas, carregarLeitura } from "@/lib/leitura/carregar";
+import type { Achado } from "@/lib/leitura/modelo";
 import { lerFatos } from "@/lib/onboarding/fatos";
 import { resumoEtapas, telaInicial, telas } from "@/lib/onboarding/modelo";
+import { comDias, intervalo, lerDias } from "@/lib/periodo";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
+import { custoPorCadastro, custoPorVenda, melhorEPior, retorno, somarPeriodo, variacao, type CampanhaResumo, type Criterio } from "@/lib/resumo/modelo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
+import type { Linha } from "./desempenho/soma";
 
-// Início: a configuração é uma só, a do assistente. Cada etapa retoma onde parou; o que o sistema confere define o
-// que falta. Abaixo, só o que muda depois de configurado: anúncios sem rastreio e o que está chegando.
-export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]">) {
+// Analisar › Resumo: a visão de quem decide. Em frases e poucos números: quanto foi investido, quanto voltou,
+// como foi em relação ao período anterior, qual campanha vai melhor e qual pede atenção, e no máximo três
+// pontos para agir. O detalhe fica no Desempenho; a configuração, enquanto não termina, num cartão só.
+
+/** "▲ 12%" / "▼ 8%" contra o período anterior; a cor diz se foi bom (para custo, cair é bom). */
+function Variacao({ v, menorEMelhor, neutro, dias }: { v: number | null; menorEMelhor?: boolean; neutro?: boolean; dias: number }) {
+  if (v === null || !Number.isFinite(v)) return <>sem base para comparar</>;
+  if (Math.abs(v) < 0.005) return <>igual aos {dias} dias anteriores</>;
+  const bom = neutro ? null : menorEMelhor ? v < 0 : v > 0;
+  return (
+    <span className={bom === null ? "" : bom ? "text-ok" : "text-err"}>
+      {v > 0 ? "▲" : "▼"} {pct(Math.abs(v), 0)} <span className="text-ink-3">vs. {dias} dias anteriores</span>
+    </span>
+  );
+}
+
+const sobe = (v: number | null) => (v === null ? null : v > 0.005 ? "subiu" : v < -0.005 ? "caiu" : "ficou igual");
+
+function FraseCampanha({ c, criterio, moedaOrg }: { c: CampanhaResumo; criterio: Criterio; moedaOrg: string }) {
+  return criterio === "retorno" ? (
+    <>
+      {moeda(retorno(c.soma) ?? 0, moedaOrg)} de volta para cada R$ 1 · {inteiro(c.soma.vendas)} venda(s) com {moeda(c.soma.gasto, moedaOrg)} investidos
+    </>
+  ) : (
+    <>
+      {c.soma.leads ? `${moeda(custoPorCadastro(c.soma), moedaOrg)} por cadastro` : "nenhum cadastro"} · {inteiro(c.soma.leads)} cadastro(s) com {moeda(c.soma.gasto, moedaOrg)}{" "}
+      investidos
+    </>
+  );
+}
+
+export default async function Resumo({ params, searchParams }: PageProps<"/o/[org]">) {
   const { org: slug } = await params;
+  const dias = lerDias((await searchParams).dias);
   const { org, papel, supabase } = await exigirOrganizacao(slug);
   const gestor = temPapel(papel, "gestor");
-  const [{ data: sinc }, rastreio, { count: leads }, { count: vendas }] = await Promise.all([
+  const p = intervalo(dias, org.fuso);
+  const [{ data: sinc }, rastreio, { data: atual }, { data: anterior }, fatos, ativas] = await Promise.all([
     supabase
       .from("sincronizacoes")
       .select("terminado_em")
@@ -26,51 +64,114 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
       .limit(1)
       .maybeSingle(),
     carregarRastreio(supabase, org.id),
-    supabase.from("leads").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).is("codigo_teste", null),
-    supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento"),
+    supabase.rpc("desempenho_anuncios", { p_org: org.id, p_de: p.de, p_ate: p.ate }),
+    supabase.rpc("desempenho_anuncios", { p_org: org.id, p_de: p.deAnterior, p_ate: p.ateAnterior }),
+    lerFatos(supabase, org.id, org.onboarding ?? {}),
+    campanhasAtivas(supabase, org),
   ]);
-  const fatos = await lerFatos(supabase, org.id, org.onboarding ?? {});
+  const agora = somarPeriodo((atual as Linha[]) ?? []);
+  const antes = somarPeriodo((anterior as Linha[]) ?? []);
+  const t = agora.total;
+  const direta = org.funil === "venda_direta";
+  const comparacao = melhorEPior(agora.campanhas, org.funil);
+  const linkCampanha = (id: string) => comDias(rotaDesempenho(slug, id), dias);
+
+  // Configuração: só enquanto falta etapa.
   const etapas = resumoEtapas(fatos);
   const prontas = etapas.filter((e) => e.feita).length;
   const faltam = etapas.length - prontas;
-  const atual = etapas.find((e) => !e.feita);
-  const comecou = !!org.onboarding?.plataforma;
-  const retomar = telas(fatos).find((t) => t.id === telaInicial(fatos));
-  const link = (tela: string) => rotaOrg(slug, `/configurar?tela=${tela}`);
+  const retomar = telas(fatos).find((x) => x.id === telaInicial(fatos));
+
+  // Rastreio: quanto dá para confiar nos números.
   const comProblema = rastreio.campanhas.filter((c) => c.semRastreio > 0);
-  const semRastreio = comProblema.reduce((t, c) => t + c.semRastreio, 0);
-  // O que pede atenção nas campanhas no ar: os achados "agir" e "observar" da leitura de cada uma.
-  const ativas = await campanhasAtivas(supabase, org);
+  const semRastreio = comProblema.reduce((s, c) => s + c.semRastreio, 0);
+
+  // Até três pontos para agir, das campanhas no ar: "agir" antes de "observar".
   const leituras = await Promise.all(ativas.map(async (c) => ({ ...c, leitura: await carregarLeitura(supabase, org, c.id) })));
-  const atencao = leituras
-    .map((c) => ({ ...c, achados: c.leitura.achados.filter((a) => a.tom === "agir" || a.tom === "observar") }))
-    .filter((c) => c.achados.length);
+  const campanhaDoAchado = new Map<Achado, { id: string; nome: string }>();
+  const pontos = leituras
+    .flatMap((c) =>
+      c.leitura.achados
+        .filter((a) => a.tom === "agir" || a.tom === "observar")
+        .map((original) => {
+          // O mesmo achado pode aparecer em duas campanhas: o id ganha a campanha para não repetir.
+          const a = { ...original, id: `${c.id}:${original.id}` };
+          campanhaDoAchado.set(a, { id: c.id, nome: c.nome });
+          return a;
+        }),
+    )
+    .sort((a, b) => Number(b.tom === "agir") - Number(a.tom === "agir"))
+    .slice(0, 3);
+
+  // A frase principal e a comparação, em português simples.
+  const r = retorno(t);
+  let principal: ReactNode;
+  if (!t.gasto) principal = <>Nenhum gasto em anúncios nos últimos {dias} dias.</>;
+  else if (t.vendas)
+    principal = (
+      <>
+        Você investiu <strong>{moeda(t.gasto, org.moeda)}</strong> e recebeu <strong>{moeda(t.receita, org.moeda)}</strong> em vendas vindas dos anúncios:{" "}
+        <strong>{moeda(r ?? 0, org.moeda)}</strong> de volta para cada R$ 1.
+      </>
+    );
+  else if (!direta && t.leads)
+    principal = (
+      <>
+        Você investiu <strong>{moeda(t.gasto, org.moeda)}</strong> e recebeu <strong>{inteiro(t.leads)} cadastro(s)</strong>, a{" "}
+        <strong>{moeda(custoPorCadastro(t), org.moeda)}</strong> cada. Nenhuma venda confirmada ainda.
+      </>
+    );
+  else
+    principal = (
+      <>
+        Você investiu <strong>{moeda(t.gasto, org.moeda)}</strong> e ainda não há {direta ? "venda" : "cadastro"} que tenha chegado com o anúncio de origem.
+      </>
+    );
+  const vRetorno = variacao(r, retorno(antes.total));
+  const vCusto = variacao(t.vendas ? custoPorVenda(t) : custoPorCadastro(t), antes.total.vendas ? custoPorVenda(antes.total) : custoPorCadastro(antes.total));
+  const comparativo =
+    t.gasto && antes.total.gasto ? (
+      t.vendas && antes.total.vendas ? (
+        <>
+          Comparado aos {dias} dias anteriores, o retorno {sobe(vRetorno)}
+          {vRetorno !== null && Math.abs(vRetorno) >= 0.005 ? ` ${pct(Math.abs(vRetorno), 0)}` : ""} e o custo por venda {sobe(vCusto)}
+          {vCusto !== null && Math.abs(vCusto) >= 0.005 ? ` ${pct(Math.abs(vCusto), 0)}` : ""}.
+        </>
+      ) : !direta && t.leads && antes.total.leads ? (
+        <>
+          Comparado aos {dias} dias anteriores, o custo por cadastro {sobe(vCusto)}
+          {vCusto !== null && Math.abs(vCusto) >= 0.005 ? ` ${pct(Math.abs(vCusto), 0)}` : ""}.
+        </>
+      ) : null
+    ) : null;
 
   return (
     <>
-      <Titulo
-        sobrancelha="Resumo"
-        descricao={
-          faltam
-            ? `${faltam === 1 ? "Falta 1 etapa" : `Faltam ${faltam} etapas`}. O rastreio precisa estar certo antes de a campanha começar.`
-            : "Tudo configurado: seus anúncios estão ligados às vendas."
-        }
-        acoes={
-          <div className="flex flex-col items-end gap-2">
-            <span className="text-sm font-semibold text-ink">
-              <span className="num-display text-3xl">{prontas}</span> de {etapas.length} prontas
-            </span>
-            <div className="flex gap-1" aria-hidden="true">
-              {etapas.map((e) => (
-                <span key={e.etapa} className={`h-1.5 w-8 rounded-full ${e.feita ? "bg-ok" : "bg-line-strong"}`} />
-              ))}
-            </div>
-          </div>
-        }
-      >
-        {faltam ? "Pronto para a campanha?" : "Tudo pronto"}
+      <Titulo sobrancelha="Resumo" descricao={`Últimos ${dias} dias, comparados aos ${dias} dias anteriores.`} acoes={<SeletorPeriodo dias={dias} href={(d) => comDias(rotaOrg(slug), d)} />}>
+        Como estão os anúncios
       </Titulo>
       <div className="grid gap-5">
+        {faltam > 0 &&
+          (gestor ? (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg bg-chrome p-5 text-chrome-ink">
+              <div className="min-w-0 flex-1 basis-64">
+                <span className="sobrancelha !text-chrome-ink-2">
+                  Configuração · {prontas} de {etapas.length} etapas prontas
+                </span>
+                <p className="mt-1 font-semibold">
+                  {faltam === 1 ? "Falta 1 etapa" : `Faltam ${faltam} etapas`} para os anúncios ficarem ligados às vendas.
+                  {retomar && <span className="font-normal text-chrome-ink-2"> Próximo: {retomar.titulo}.</span>}
+                </p>
+              </div>
+              <BotaoLink href={rotaOrg(slug, "/configurar")} variante="peso">
+                Continuar a configuração
+                <IconeSeta tamanho={16} />
+              </BotaoLink>
+            </div>
+          ) : (
+            <Aviso>A configuração ainda não terminou: os números abaixo podem estar incompletos.</Aviso>
+          ))}
+
         {semRastreio > 0 && (
           <Aviso tom="erro">
             <strong>{inteiro(semRastreio)} anúncio(s) no ar ou em análise sem rastreio.</strong> Os cadastros e vendas deles chegam sem o anúncio de origem, e os números dessas
@@ -78,9 +179,9 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             <ul className="mt-1.5 flex flex-col gap-0.5">
               {comProblema.map((c) => (
                 <li key={c.campaignId}>
-                  <a href={gestor ? rotaOrg(slug, `/rastreio/${c.campaignId}`) : rotaDesempenho(slug, c.campaignId)} className="font-medium">
+                  <Link href={gestor ? rotaOrg(slug, `/rastreio/${c.campaignId}`) : linkCampanha(c.campaignId)} className="font-medium">
                     {c.nome}
-                  </a>{" "}
+                  </Link>{" "}
                   · {c.semRastreio} anúncio(s)
                 </li>
               ))}
@@ -88,88 +189,89 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             {!gestor && <span className="mt-1.5 block">Avise quem gerencia as campanhas.</span>}
           </Aviso>
         )}
-        {atencao.map((c) => (
-          <section key={c.id} className="flex flex-col gap-4" aria-label={`O que pede atenção na campanha ${c.nome}`}>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="min-w-0">
-                <span className="sobrancelha">O que pede atenção</span>
-                <h2 className="mt-1 text-lg font-[600] text-ink [overflow-wrap:anywhere]">{c.nome}</h2>
-                {c.leitura.nota && <p className="mt-0.5 text-sm text-ink-3">{c.leitura.nota}</p>}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <ResumoLeitura achados={c.leitura.achados} />
-                <BotaoLink variante="secundario" href={rotaDesempenho(slug, c.id)}>
-                  Ver a campanha
-                  <IconeSeta tamanho={16} />
-                </BotaoLink>
-              </div>
-            </div>
-            <GradeAchados achados={c.achados} />
-          </section>
-        ))}
-        {gestor && (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-          <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
-            {etapas.map((e) => {
-              const destaque = e === atual;
-              return (
-                <li key={e.etapa} className={`flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line px-5 py-4 first:border-t-0 ${destaque ? "bg-accent-soft" : ""}`}>
-                  <span className={`num-display w-6 text-[28px] leading-none ${e.feita ? "text-line-strong" : "text-ink"}`}>{e.etapa}</span>
-                  <div className="min-w-0 flex-1 basis-48">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-ink">{e.nome}</span>
-                      <Etiqueta tom={e.alerta ? "alerta" : e.feita ? "ok" : destaque ? "alerta" : "info"}>{e.alerta ? "Em teste" : e.feita ? "Feita" : "Falta"}</Etiqueta>
-                    </div>
-                    <p className="mt-1 text-sm text-ink-2 [overflow-wrap:anywhere]">{e.alerta ?? e.detalhe}</p>
-                  </div>
-                  <BotaoLink href={link(e.tela)} variante={destaque ? "primario" : "secundario"} className="w-full sm:w-[140px]">
-                    {e.feita ? "Rever" : destaque ? "Continuar" : "Abrir"}
-                    <IconeSeta tamanho={16} />
-                  </BotaoLink>
-                </li>
-              );
-            })}
-          </ol>
-          <aside className="flex flex-col gap-4 rounded-lg bg-chrome p-6 text-chrome-ink">
-            <span className="sobrancelha !text-chrome-ink-2">{atual ? (comecou ? "Continue de onde parou" : "Comece por aqui") : "Configuração"}</span>
-            {atual ? (
-              <>
-                <p className="text-xl font-bold leading-tight tracking-[-0.01em]">Atribuição que não foi capturada não se recupera.</p>
-                <p className="text-sm text-chrome-ink-2">
-                  Se um anúncio roda sem parâmetros ou a venda não chega com a origem, aquele dinheiro fica sem resposta para sempre. Feche as etapas antes de ativar a campanha.
-                </p>
-                <p className="mt-2 text-sm text-chrome-ink-2">
-                  Próximo: <strong className="font-semibold text-chrome-ink">{retomar?.titulo}</strong>
-                </p>
-                <BotaoLink href={rotaOrg(slug, "/configurar")} variante="peso">
-                  {comecou ? "Continuar a configuração" : "Começar a configuração"}
-                  <IconeSeta tamanho={16} />
-                </BotaoLink>
-              </>
-            ) : (
-              <>
-                <p className="flex items-center gap-2 text-xl font-bold leading-tight tracking-[-0.01em]">
-                  <IconeCheck tamanho={20} className="flex-none text-lime" /> Tudo conferido
-                </p>
-                <p className="text-sm text-chrome-ink-2">Se alguma conexão parar de funcionar, a etapa volta a aparecer aqui.</p>
-                <BotaoLink href={rotaOrg(slug, "/desempenho")} variante="peso" className="mt-2">
-                  Ver o Desempenho
-                  <IconeSeta tamanho={16} />
-                </BotaoLink>
-              </>
-            )}
-          </aside>
-        </div>
+
+        <section className="flex flex-col gap-2 rounded-lg bg-chrome p-6 text-chrome-ink" aria-label="Em uma frase">
+          <p className="text-xl leading-snug tracking-[-0.01em] sm:text-2xl [&_strong]:font-bold">{principal}</p>
+          {comparativo && <p className="text-chrome-ink-2">{comparativo}</p>}
+        </section>
+
+        {t.gasto > 0 && (
+          <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-5" : "xl:grid-cols-6"}`}>
+            <Indicador rotulo="Investido" valor={moeda(t.gasto, org.moeda)} detalhe={<Variacao v={variacao(t.gasto, antes.total.gasto)} neutro dias={dias} />} />
+            {!direta && <Indicador rotulo="Cadastros" valor={inteiro(t.leads)} detalhe={<Variacao v={variacao(t.leads, antes.total.leads)} dias={dias} />} />}
+            <Indicador rotulo="Vendas" valor={inteiro(t.vendas)} detalhe={<Variacao v={variacao(t.vendas, antes.total.vendas)} dias={dias} />} />
+            <Indicador rotulo="Recebido em vendas" valor={moeda(t.receita, org.moeda)} detalhe={<Variacao v={variacao(t.receita, antes.total.receita)} dias={dias} />} />
+            <Indicador
+              rotulo="Custo por venda"
+              valor={moeda(custoPorVenda(t), org.moeda)}
+              detalhe={<Variacao v={variacao(custoPorVenda(t), custoPorVenda(antes.total))} menorEMelhor dias={dias} />}
+              destaque
+            />
+            <Indicador
+              rotulo="De volta para cada R$ 1"
+              valor={r === null ? "—" : moeda(r, org.moeda)}
+              detalhe={r === null ? undefined : <Variacao v={vRetorno} dias={dias} />}
+              destaque
+            />
+          </Indicadores>
         )}
-        <Indicadores className="grid-cols-1 sm:grid-cols-3">
-          <Indicador rotulo="Leads" valor={inteiro(leads ?? 0)} detalhe="recebidos até agora" />
-          <Indicador rotulo="Vendas" valor={inteiro(vendas ?? 0)} detalhe="pagas até agora" />
-          <Indicador
-            rotulo="Dados da Meta"
-            valor={sinc ? "Em dia" : "—"}
-            detalhe={sinc ? `Última leitura: ${dataHora(sinc.terminado_em, org.fuso)}` : "Primeira leitura ainda não feita"}
-          />
-        </Indicadores>
+
+        {comparacao && (
+          <div className={`grid gap-5 ${comparacao.pior ? "md:grid-cols-2" : ""}`}>
+            <Cartao titulo="Vai melhor" descricao={comparacao.criterio === "retorno" ? "A campanha com mais retorno no período." : "A campanha com o cadastro mais barato no período."}>
+              <Link href={linkCampanha(comparacao.melhor.id)} className="text-lg font-semibold text-ink hover:text-accent-text [overflow-wrap:anywhere]">
+                {comparacao.melhor.nome}
+              </Link>
+              <p className="mt-1 text-sm text-ink-2">
+                <FraseCampanha c={comparacao.melhor} criterio={comparacao.criterio} moedaOrg={org.moeda} />
+              </p>
+            </Cartao>
+            {comparacao.pior && (
+              <Cartao
+                titulo="Pede atenção"
+                descricao={comparacao.criterio === "retorno" ? "A campanha com menos retorno no período." : "A campanha com o cadastro mais caro no período."}
+              >
+                <Link href={linkCampanha(comparacao.pior.id)} className="text-lg font-semibold text-ink hover:text-accent-text [overflow-wrap:anywhere]">
+                  {comparacao.pior.nome}
+                </Link>
+                <p className="mt-1 text-sm text-ink-2">
+                  <FraseCampanha c={comparacao.pior} criterio={comparacao.criterio} moedaOrg={org.moeda} />
+                </p>
+              </Cartao>
+            )}
+          </div>
+        )}
+
+        {pontos.length > 0 && (
+          <section className="flex flex-col gap-3" aria-label="O que fazer agora">
+            <div>
+              <span className="sobrancelha">O que fazer agora</span>
+              <p className="mt-1 text-sm text-ink-3">Os pontos mais importantes das campanhas no ar. Os demais estão no Desempenho de cada campanha.</p>
+            </div>
+            <GradeAchados
+              achados={pontos}
+              extra={(a) => {
+                const c = campanhaDoAchado.get(a);
+                return c ? (
+                  <Link href={linkCampanha(c.id)} className="text-sm font-medium text-accent-text [overflow-wrap:anywhere]">
+                    {c.nome} →
+                  </Link>
+                ) : null;
+              }}
+            />
+          </section>
+        )}
+
+        {!t.gasto && !faltam && (
+          <Vazio titulo="Nada para resumir neste período" acao={<BotaoLink href={comDias(rotaOrg(slug), 30)} variante="secundario">Ver os últimos 30 dias</BotaoLink>}>
+            Escolha um período maior, ou confira se a Meta já foi lida.
+          </Vazio>
+        )}
+
+        <p className="text-xs text-ink-3">
+          Números dos anúncios: cadastros e vendas que chegaram com o anúncio de origem.{" "}
+          {sinc ? `Meta lida pela última vez em ${dataHora(sinc.terminado_em, org.fuso)}.` : "A Meta ainda não foi lida."}
+        </p>
       </div>
     </>
   );

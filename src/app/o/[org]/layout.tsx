@@ -23,9 +23,9 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
     {
       titulo: "Analisar",
       itens: [
-        { href: r(""), rotulo: "Resumo", icone: "inicio", exato: true },
-        { href: r("/desempenho"), rotulo: "Desempenho", icone: "desempenho" },
-        { href: r("/vendas"), rotulo: "Leads e vendas", icone: "leads" },
+        { href: r(""), rotulo: "Resumo", icone: "inicio", exato: true, periodo: true },
+        { href: r("/desempenho"), rotulo: "Desempenho", icone: "desempenho", periodo: true },
+        { href: r("/vendas"), rotulo: "Leads e vendas", icone: "leads", periodo: true },
       ],
     },
     ...(temPapel(papel, "gestor")

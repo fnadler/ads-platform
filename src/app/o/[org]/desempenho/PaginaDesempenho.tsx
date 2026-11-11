@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
+import { SeletorPeriodo } from "@/components/SeletorPeriodo";
 import { IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
@@ -7,6 +8,7 @@ import { campanhaMontada } from "@/lib/campanhas/lista";
 import { decimal, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
+import { comDias, diaNoFuso, lerDias } from "@/lib/periodo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { carregarLeadsVendas } from "@/lib/vendas/lista";
 import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
@@ -14,11 +16,7 @@ import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
 import { somar, zero, type Linha, type Soma } from "./soma";
 import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados } from "./tabelas";
 
-const PERIODOS = [7, 14, 30, 90];
-const dia = (offset: number, fuso: string) =>
-  new Date(Date.now() - offset * 86_400_000).toLocaleDateString("sv-SE", {
-    timeZone: fuso,
-  });
+const dia = diaNoFuso;
 const rotuloDia = (iso: string) =>
   new Date(`${iso}T12:00:00Z`)
     .toLocaleDateString("pt-BR", {
@@ -33,7 +31,7 @@ export type Busca = Record<string, string | string[] | undefined>;
 
 /** Desempenho: a lista de campanhas (campanha = null) ou o detalhe de uma campanha da Meta. */
 export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string; busca: Busca; campanha: string | null }) {
-  const dias = PERIODOS.includes(Number(busca.dias)) ? Number(busca.dias) : 7;
+  const dias = lerDias(busca.dias);
   const aba: Aba = ABAS.includes(busca.aba as Aba) ? (busca.aba as Aba) : "geral";
   const { org, supabase, papel } = await exigirOrganizacao(slug);
   const de = dia(dias - 1, org.fuso);
@@ -196,19 +194,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
               <IconeSeta tamanho={16} />
             </BotaoLink>
           )}
-          <div role="tablist" aria-label="Período" className="flex gap-1 rounded-lg bg-sunken p-1">
-            {PERIODOS.map((d) => (
-              <Link
-                key={d}
-                href={link({ dias: d })}
-                role="tab"
-                aria-selected={d === dias}
-                className={`flex min-h-10 items-center rounded-md px-3.5 text-sm font-medium no-underline ${d === dias ? "bg-surface text-ink shadow-card" : "text-ink-2 hover:text-ink hover:no-underline"}`}
-              >
-                {d} dias
-              </Link>
-            ))}
-          </div>
+          <SeletorPeriodo dias={dias} href={(d) => link({ dias: d })} />
           </div>
         }
       >
@@ -248,7 +234,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           acoes={acoes}
           leadsVendas={leadsVendas}
           fuso={org.fuso}
-          rotaVendas={`${rotaOrg(slug, "/vendas")}?campanha=${campanha}`}
+          rotaVendas={comDias(`${rotaOrg(slug, "/vendas")}?campanha=${campanha}`, dias)}
         />
         </>
       ) : (
