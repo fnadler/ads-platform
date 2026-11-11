@@ -6,13 +6,13 @@ const { PARAMETROS_META } = await import("./regras");
 
 describe("avaliarAnuncio", () => {
   it("sem parâmetros e no ar: sem rastreio, vivo", () => {
-    expect(avaliarAnuncio({ url_tags: null, destinos: ["https://x.com"], status: "ACTIVE" })).toMatchObject({ status_rastreio: "erro", vivo: true });
+    expect(avaliarAnuncio({ url_tags: null, destinos: ["https://x.com"], status: "ACTIVE" }, false)).toMatchObject({ status_rastreio: "erro", vivo: true });
   });
   it("parâmetros completos: ok", () => {
-    expect(avaliarAnuncio({ url_tags: PARAMETROS_META, destinos: ["https://x.com"], status: "PAUSED" })).toMatchObject({ status_rastreio: "ok", vivo: false });
+    expect(avaliarAnuncio({ url_tags: PARAMETROS_META, destinos: ["https://x.com"], status: "PAUSED" }, false)).toMatchObject({ status_rastreio: "ok", vivo: false });
   });
   it("sem destino rebaixa ok para atenção", () => {
-    expect(avaliarAnuncio({ url_tags: PARAMETROS_META, destinos: [], status: "PENDING_REVIEW" })).toMatchObject({ status_rastreio: "alerta", vivo: true });
+    expect(avaliarAnuncio({ url_tags: PARAMETROS_META, destinos: [], status: "PENDING_REVIEW" }, false)).toMatchObject({ status_rastreio: "alerta", vivo: true });
   });
 });
 
