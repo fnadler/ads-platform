@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
 import { IconeSeta, IconeVoltar } from "@/components/Icones";
-import { Aviso, BotaoLink, Cartao, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
+import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { campanhaMontada } from "@/lib/campanhas/lista";
 import { decimal, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarLeitura } from "@/lib/leitura/carregar";
+import { carregarRastreio } from "@/lib/rastreio/situacao";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { carregarLeadsVendas } from "@/lib/vendas/lista";
 import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
@@ -38,7 +39,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
   const de = dia(dias - 1, org.fuso);
   const ate = dia(0, org.fuso);
 
-  const [{ data: dados, error }, { data: serie }, leitura] = await Promise.all([
+  const [{ data: dados, error }, { data: serie }, leitura, rastreio] = await Promise.all([
     supabase.rpc("desempenho_anuncios", {
       p_org: org.id,
       p_de: de,
@@ -51,7 +52,11 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
       p_campanha: campanha,
     }),
     campanha ? carregarLeitura(supabase, org, campanha) : null,
+    carregarRastreio(supabase, org.id, campanha),
   ]);
+  // Confiança dos números: anúncios no ar sem rastreio deixam cadastros e vendas de fora.
+  const saudeRastreio = new Map(rastreio.campanhas.map((c) => [c.campaignId, c]));
+  const gestor = temPapel(papel, "gestor");
   if (error) return <Aviso tom="erro">Não foi possível carregar: {error.message}</Aviso>;
   const linhas = ((dados as Linha[]) ?? []).filter((l) => !campanha || l.campaign_id === campanha);
 
@@ -120,7 +125,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           configuracoes: rotaOrg(slug, "/configuracoes"),
           campanhas: rotaOrg(slug, "/campanhas"),
           vendas: rotaOrg(slug, "/vendas"),
-          rastreio: rotaOrg(slug, "/rastreio"),
+          rastreio: rotaOrg(slug, `/rastreio/${campanha}`),
         })
       : undefined,
     campanha && aba === "vendas" ? carregarLeadsVendas(supabase, org.id, { campanha, desde: inicioDoDia(de, org.fuso) }) : null,
@@ -213,6 +218,14 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
       {semDados ? (
         <Vazio titulo="Sem dados no período">Escolha um período maior ou confira em Configurações › Sincronizações se a Meta já foi lida.</Vazio>
       ) : campanha && leitura ? (
+        <>
+        {!!saudeRastreio.get(campanha)?.semRastreio && (
+          <Aviso tom="alerta" className="mb-5">
+            <strong>Os números desta campanha estão incompletos.</strong> {saudeRastreio.get(campanha)!.semRastreio} anúncio(s) no ar estão sem rastreio: os cadastros e vendas
+            que vierem deles não aparecem aqui.{" "}
+            {gestor ? <Link href={rotaOrg(slug, `/rastreio/${campanha}`)}>Corrigir em Gerenciar › Rastreio</Link> : "Avise quem gerencia as campanhas."}
+          </Aviso>
+        )}
         <DetalheCampanha
           aba={aba}
           link={link}
@@ -237,6 +250,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           fuso={org.fuso}
           rotaVendas={`${rotaOrg(slug, "/vendas")}?campanha=${campanha}`}
         />
+        </>
       ) : (
         <div className="grid gap-5">
           <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
@@ -347,6 +361,11 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
                           {c.nome}
                         </Link>
                         <div className="text-xs text-ink-3">{c.anuncios} anúncio(s) com gasto</div>
+                        {!!saudeRastreio.get(id)?.semRastreio && (
+                          <div className="mt-1">
+                            <Etiqueta tom="alerta">Números incompletos: rastreio faltando</Etiqueta>
+                          </div>
+                        )}
                       </td>
                       <td>{moeda(c.soma.gasto, org.moeda)}</td>
                       <td>{inteiro(c.soma.impressoes)}</td>

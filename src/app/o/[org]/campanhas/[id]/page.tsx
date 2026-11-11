@@ -150,7 +150,8 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 </a>
               )}
               <p className="text-ink-2">
-                Depois da análise, confira o rastreio em <Link href={rotaOrg(slug, "/rastreio")}>Rastreio</Link> (“Reler na Meta agora”) e faça o teste de ponta a ponta.
+                Depois da análise, confira o rastreio em{" "}
+                <Link href={rotaOrg(slug, c.meta_campaign_id ? `/rastreio/${c.meta_campaign_id}` : "/rastreio")}>Rastreio desta campanha</Link> (“Reler na Meta agora”) e faça o teste de ponta a ponta.
               </p>
               {c.status === "criada" && gestor && (
                 <Formulario acao={ativarCampanha} rotulo="Ativar campanha" variante="peso" className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">

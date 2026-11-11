@@ -5,6 +5,7 @@ import { Aviso, BotaoLink, Cartao, Etiqueta, Tabela, Titulo } from "@/components
 import { exigirGestao } from "@/lib/auth/sessao";
 import { linkGerenciador } from "@/lib/campanhas/lista";
 import { ROTULO_VEICULACAO, situacaoPelosAnuncios, veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
+import { carregarRastreio, rotuloSaude } from "@/lib/rastreio/situacao";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { CartaoVeiculacao } from "../CartaoVeiculacao";
 
@@ -29,6 +30,8 @@ export async function CampanhaExterna({ slug, metaId }: { slug: string; metaId: 
   if (!anuncios?.length) notFound();
 
   const status = anuncios.map((a) => a.status);
+  const rastreio = (await carregarRastreio(supabase, org.id, metaId)).campanhas[0];
+  const saude = rastreio ? rotuloSaude(rastreio) : null;
   const situacao = situacaoPelosAnuncios(status);
   const gerenciador = linkGerenciador(anuncios[0].account_id, metaId);
 
@@ -43,6 +46,10 @@ export async function CampanhaExterna({ slug, metaId }: { slug: string; metaId: 
         acoes={
           <div className="flex flex-wrap items-center gap-3">
             <Etiqueta tom={situacao.tom}>{situacao.rotulo}</Etiqueta>
+            <BotaoLink variante="secundario" href={rotaOrg(slug, `/rastreio/${metaId}`)}>
+              Rastreio
+              {saude && <Etiqueta tom={saude.tom}>{saude.rotulo}</Etiqueta>}
+            </BotaoLink>
             <BotaoLink variante="secundario" href={rotaDesempenho(slug, metaId)}>
               Ver desempenho
               <IconeSeta tamanho={16} />

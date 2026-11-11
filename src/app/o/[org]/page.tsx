@@ -6,9 +6,8 @@ import { dataHora, inteiro } from "@/lib/formato";
 import { campanhasAtivas, carregarLeitura } from "@/lib/leitura/carregar";
 import { lerFatos } from "@/lib/onboarding/fatos";
 import { resumoEtapas, telaInicial, telas } from "@/lib/onboarding/modelo";
-import { avaliarParametros } from "@/lib/rastreio/regras";
+import { carregarRastreio } from "@/lib/rastreio/situacao";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
-import { TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
 
 // Início: a configuração é uma só, a do assistente. Cada etapa retoma onde parou; o que o sistema confere define o
 // que falta. Abaixo, só o que muda depois de configurado: anúncios sem rastreio e o que está chegando.
@@ -16,8 +15,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
   const { org: slug } = await params;
   const { org, papel, supabase } = await exigirOrganizacao(slug);
   const gestor = temPapel(papel, "gestor");
-  const [{ data: conexoes }, { data: sinc }, { data: anuncios }, { count: leads }, { count: vendas }] = await Promise.all([
-    supabase.from("conexoes").select("tipo").eq("organizacao_id", org.id),
+  const [{ data: sinc }, rastreio, { count: leads }, { count: vendas }] = await Promise.all([
     supabase
       .from("sincronizacoes")
       .select("terminado_em")
@@ -27,7 +25,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
       .order("terminado_em", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase.from("meta_anuncios").select("url_tags").eq("organizacao_id", org.id).in("status", ["ACTIVE", "PENDING_REVIEW", "PREAPPROVED", "IN_PROCESS"]),
+    carregarRastreio(supabase, org.id),
     supabase.from("leads").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).is("codigo_teste", null),
     supabase.from("vendas").select("*", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "pagamento"),
   ]);
@@ -39,8 +37,8 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
   const comecou = !!org.onboarding?.plataforma;
   const retomar = telas(fatos).find((t) => t.id === telaInicial(fatos));
   const link = (tela: string) => rotaOrg(slug, `/configurar?tela=${tela}`);
-  const checkout = conexoes?.some((c) => (TIPOS_PLATAFORMA as string[]).includes(c.tipo)) ?? false;
-  const semRastreio = (anuncios ?? []).filter((a) => avaliarParametros(a.url_tags, { checkout }).status === "erro").length;
+  const comProblema = rastreio.campanhas.filter((c) => c.semRastreio > 0);
+  const semRastreio = comProblema.reduce((t, c) => t + c.semRastreio, 0);
   // O que pede atenção nas campanhas no ar: os achados "agir" e "observar" da leitura de cada uma.
   const ativas = await campanhasAtivas(supabase, org);
   const leituras = await Promise.all(ativas.map(async (c) => ({ ...c, leitura: await carregarLeitura(supabase, org, c.id) })));
@@ -75,13 +73,19 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
       <div className="grid gap-5">
         {semRastreio > 0 && (
           <Aviso tom="erro">
-            <strong>{inteiro(semRastreio)} anúncio(s) ativo(s) ou em análise sem rastreio.</strong> As vendas deles chegam sem o anúncio de origem.
-            {gestor && (
-              <>
-                {" "}
-                Corrija em <a href={rotaOrg(slug, "/rastreio")}>Gerenciar › Rastreio</a>.
-              </>
-            )}
+            <strong>{inteiro(semRastreio)} anúncio(s) no ar ou em análise sem rastreio.</strong> Os cadastros e vendas deles chegam sem o anúncio de origem, e os números dessas
+            campanhas ficam abaixo do real:
+            <ul className="mt-1.5 flex flex-col gap-0.5">
+              {comProblema.map((c) => (
+                <li key={c.campaignId}>
+                  <a href={gestor ? rotaOrg(slug, `/rastreio/${c.campaignId}`) : rotaDesempenho(slug, c.campaignId)} className="font-medium">
+                    {c.nome}
+                  </a>{" "}
+                  · {c.semRastreio} anúncio(s)
+                </li>
+              ))}
+            </ul>
+            {!gestor && <span className="mt-1.5 block">Avise quem gerencia as campanhas.</span>}
           </Aviso>
         )}
         {atencao.map((c) => (

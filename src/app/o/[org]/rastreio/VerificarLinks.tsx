@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Botao, Etiqueta } from "@/components/ui";
 import { verificarLinks, type SituacaoLink } from "@/lib/rastreio/acoes";
 
-export function VerificarLinks({ orgId }: { orgId: string }) {
+export function VerificarLinks({ orgId, campanha = null }: { orgId: string; campanha?: string | null }) {
   const [links, setLinks] = useState<SituacaoLink[] | null>(null);
   const [erro, setErro] = useState("");
   const [pendente, iniciar] = useTransition();
@@ -18,7 +18,7 @@ export function VerificarLinks({ orgId }: { orgId: string }) {
             iniciar(async () => {
               setErro("");
               try {
-                setLinks(await verificarLinks(orgId));
+                setLinks(await verificarLinks(orgId, campanha));
               } catch (e) {
                 setErro((e as Error).message);
               }
