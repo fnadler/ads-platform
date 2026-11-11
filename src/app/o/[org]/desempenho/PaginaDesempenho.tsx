@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { GraficoAcumulado, type PontoComparacao } from "@/components/GraficoAcumulado";
+import { ComDetalhes, InterruptorDetalhes, SoComDetalhes } from "@/components/ComDetalhes";
 import { SeletorPeriodo } from "@/components/SeletorPeriodo";
+import { Termo } from "@/components/Termo";
 import { IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Titulo, Vazio } from "@/components/ui";
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
@@ -14,7 +16,7 @@ import { carregarLeadsVendas } from "@/lib/vendas/lista";
 import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
 import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
 import { somar, zero, type Linha, type Soma } from "./soma";
-import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados } from "./tabelas";
+import { celulasFunil as celulas, colunasFunil as colunas, destaque, roas, rotuloCancelados, TECNICA } from "./tabelas";
 
 const dia = diaNoFuso;
 const rotuloDia = (iso: string) =>
@@ -164,11 +166,12 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
   const ordemCor = new Map([...linhas].sort((a, b) => a.ad_id.localeCompare(b.ad_id)).map((l, i) => [l.ad_id, i]));
   const direta = org.funil === "venda_direta";
   const comTeste = org.funil === "cadastro_teste_venda";
-  const colunasFunil = colunas(org.funil);
-  const celulasFunil = (x: Soma) => celulas(x, org.funil, org.moeda);
+  const colunasFunil = colunas(org.funil, { tecnicas: true });
+  const celulasFunil = (x: Soma) => celulas(x, org.funil, org.moeda, { tecnicas: true });
   const indicadorPendentes = (
     <Indicador
       rotulo="Pagamento pendente"
+      explica="pendentes"
       valor={inteiro(total.vendas_pendentes)}
       detalhe={total.vendas_pendentes ? `${moeda(total.valor_pendente, org.moeda)} em Pix ou boleto` : "Pix ou boleto gerados"}
     />
@@ -238,88 +241,102 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
         />
         </>
       ) : (
-        <div className="grid gap-5">
-          <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-3" : "xl:grid-cols-4"}`}>
-            <Indicador rotulo="Gasto" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" />
-            {direta ? (
-              <Indicador rotulo="Compras (Meta)" valor={inteiro(total.compras_meta)} detalhe="o que o Gerenciador conta" />
-            ) : (
-              <>
-                <Indicador rotulo="Leads (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" />
-                <Indicador rotulo="Custo por lead" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="gasto ÷ leads (Meta)" />
-                <Indicador rotulo="Leads (sistema)" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio" />
-              </>
-            )}
+        <ComDetalhes className="grid gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-2xl text-sm text-ink-3">O essencial do período. “Ver detalhes” mostra também o que a Meta conta e como os anúncios foram entregues.</p>
+            <InterruptorDetalhes />
+          </div>
+          <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-5" : "xl:grid-cols-6"}`}>
+            <Indicador rotulo="Investido" valor={moeda(total.gasto, org.moeda)} detalhe="na Meta, no período" explica="investido" />
+            {!direta && <Indicador rotulo="Cadastros" valor={inteiro(total.leads)} detalhe="chegaram com o anúncio de origem" explica="cadastros" />}
             {comTeste ? (
               <Indicador
                 rotulo="Testes"
+                explica="testes"
                 valor={inteiro(total.testes)}
                 detalhe={
                   total.leads
-                    ? `${pct(razao(total.testes, total.leads), 0)} dos leads${total.testes_cancelados ? ` · ${rotuloCancelados(total.testes_cancelados)}` : ""}`
+                    ? `${pct(razao(total.testes, total.leads), 0)} dos cadastros${total.testes_cancelados ? ` · ${rotuloCancelados(total.testes_cancelados)}` : ""}`
                     : undefined
                 }
               />
             ) : (
               indicadorPendentes
             )}
-            <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} de receita` : undefined} />
-            <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="gasto ÷ vendas" destaque />
+            <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} recebidos` : undefined} explica="vendas" />
+            <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="investido ÷ vendas" explica="custoVenda" destaque />
             <Indicador
-              rotulo="ROAS"
+              rotulo="Retorno"
+              explica="retorno"
               valor={roas(total.receita, total.gasto)}
-              detalhe={total.receita ? `${moeda(razao(total.receita, total.gasto), org.moeda)} de volta por R$ 1` : undefined}
+              detalhe={total.receita ? `${moeda(razao(total.receita, total.gasto), org.moeda)} de volta para cada R$ 1` : undefined}
               destaque
             />
           </Indicadores>
 
-          {direta ? (
+          <SoComDetalhes className="grid gap-5">
+            <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-4" : "xl:grid-cols-5"}`}>
+              {direta ? (
+                <Indicador rotulo="Compras (Meta)" valor={inteiro(total.compras_meta)} detalhe="o que o Gerenciador conta" explica="comprasMeta" />
+              ) : (
+                <>
+                  <Indicador rotulo="Cadastros (Meta)" valor={inteiro(total.leads_meta)} detalhe="o que o Gerenciador conta" explica="cadastrosMeta" />
+                  <Indicador rotulo="Custo por cadastro (Meta)" valor={moeda(razao(total.gasto, total.leads_meta), org.moeda)} detalhe="investido ÷ cadastros (Meta)" explica="custoCadastroMeta" />
+                </>
+              )}
+              <Indicador rotulo="Impressões" valor={inteiro(total.impressoes)} detalhe="vezes que os anúncios apareceram" explica="impressoes" />
+              <Indicador rotulo="Frequência" valor={`${decimal(razao(total.freqPeso, total.impressoes), 1)}×`} detalhe="vezes que cada pessoa viu, em média" explica="frequencia" />
+              <Indicador rotulo="Taxa de cliques" valor={pct(razao(total.cliques_link, total.impressoes), 2)} detalhe="cliques no link ÷ impressões" explica="ctr" />
+            </Indicadores>
             <Aviso>
-              <strong>Compras (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Vendas</strong> é o que a sua plataforma confirmou, com o anúncio de origem; Pix e
-              boleto só contam depois de pagos, e reembolso e chargeback descontam da receita.
+              {direta ? (
+                <>
+                  <strong>Compras (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Vendas</strong> é o que a sua plataforma confirmou, com o anúncio de origem; Pix e
+                  boleto só contam depois de pagos, e reembolso e chargeback descontam do recebido.
+                </>
+              ) : (
+                <>
+                  <strong>Cadastros (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Cadastros</strong> é o que chegou à sua fonte de venda com o anúncio de origem;
+                  é sobre eles que calculamos {comTeste ? "testes, vendas" : "vendas"} e o retorno. A diferença costuma vir de quem bloqueia o rastreio no navegador.
+                </>
+              )}
             </Aviso>
-          ) : (
-            <>
-              <Aviso>
-                <strong>Leads (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Leads (sistema)</strong> é o que chegou à sua fonte de venda com o anúncio de origem;
-                é sobre ele que calculamos {comTeste ? "testes, vendas" : "vendas"} e ROAS.
-                {comTeste && " Testes conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece."}
-              </Aviso>
+          </SoComDetalhes>
 
-              <Cartao>
-                <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Leads (Meta)" : "Leads (sistema)"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
-                {atuais.at(-1)?.dia === ate && (
-                  <p className="mt-2 text-xs text-ink-3">O último ponto é hoje, ainda em andamento: a curva achata até o dia terminar e a Meta ser lida de novo.</p>
-                )}
-                <details className="mt-3 text-sm">
-                  <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">
-                    Ver em tabela
-                  </summary>
-                  <div className="mt-3 overflow-hidden rounded-md border border-line">
-                    <Tabela>
-                      <thead>
-                        <tr>
-                          <th>Dia</th>
-                          <th className="text-right">Acumulado</th>
-                          <th>Dia anterior equivalente</th>
-                          <th className="text-right">Acumulado</th>
+          {!direta && (
+            <Cartao>
+              <GraficoAcumulado pontos={pontos} titulo={`${usarMeta ? "Cadastros (Meta)" : "Cadastros"} acumulados${nomeCampanha ? ` · ${nomeCampanha}` : ""}`} />
+              {atuais.at(-1)?.dia === ate && (
+                <p className="mt-2 text-xs text-ink-3">O último ponto é hoje, ainda em andamento: a curva achata até o dia terminar e a Meta ser lida de novo.</p>
+              )}
+              <details className="mt-3 text-sm">
+                <summary className="inline-flex min-h-10 cursor-pointer items-center rounded-md border border-line-strong px-3.5 font-medium text-ink hover:bg-surface-2">
+                  Ver em tabela
+                </summary>
+                <div className="mt-3 overflow-hidden rounded-md border border-line">
+                  <Tabela>
+                    <thead>
+                      <tr>
+                        <th>Dia</th>
+                        <th className="text-right">Acumulado</th>
+                        <th>Dia anterior equivalente</th>
+                        <th className="text-right">Acumulado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_.num]:tabular-nums">
+                      {pontos.map((p) => (
+                        <tr key={p.rotulo}>
+                          <td>{p.rotulo}</td>
+                          <td className="num">{inteiro(p.atual)}</td>
+                          <td className="text-ink-2">{p.rotuloAnterior}</td>
+                          <td className="num">{inteiro(p.anterior)}</td>
                         </tr>
-                      </thead>
-                      <tbody className="[&_.num]:tabular-nums">
-                        {pontos.map((p) => (
-                          <tr key={p.rotulo}>
-                            <td>{p.rotulo}</td>
-                            <td className="num">{inteiro(p.atual)}</td>
-                            <td className="text-ink-2">{p.rotuloAnterior}</td>
-                            <td className="num">{inteiro(p.anterior)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Tabela>
-                  </div>
-                </details>
-              </Cartao>
-            </>
+                      ))}
+                    </tbody>
+                  </Tabela>
+                </div>
+              </details>
+            </Cartao>
           )}
 
           <Cartao titulo={`Campanhas · últimos ${dias} dias`} acoes={<span className="text-sm text-ink-3">Clique numa campanha para ver os anúncios</span>} rente>
@@ -327,14 +344,28 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
               <thead>
                 <tr>
                   <th>Campanha</th>
-                  <th className="text-right">Gasto</th>
-                  <th className="text-right">Impressões</th>
-                  <th className="text-right">Freq.</th>
-                  <th className="text-right">CTR</th>
+                  <th className="text-right">
+                    <Termo id="investido">Investido</Termo>
+                  </th>
+                  <th className={`text-right ${TECNICA}`}>
+                    <Termo id="impressoes">Impressões</Termo>
+                  </th>
+                  <th className={`text-right ${TECNICA}`}>
+                    <Termo id="frequencia">Frequência</Termo>
+                  </th>
+                  <th className={`text-right ${TECNICA}`}>
+                    <Termo id="ctr">Taxa de cliques</Termo>
+                  </th>
                   {colunasFunil}
-                  <th className="text-right">Vendas</th>
-                  <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-                  <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
+                  <th className="text-right">
+                    <Termo id="vendas">Vendas</Termo>
+                  </th>
+                  <th className="!bg-accent-soft text-right !text-ink">
+                    <Termo id="custoVenda">Custo por venda</Termo>
+                  </th>
+                  <th className="!bg-accent-soft text-right !text-ink">
+                    <Termo id="retorno">Retorno</Termo>
+                  </th>
                 </tr>
               </thead>
               <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
@@ -354,9 +385,9 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
                         )}
                       </td>
                       <td>{moeda(c.soma.gasto, org.moeda)}</td>
-                      <td>{inteiro(c.soma.impressoes)}</td>
-                      <td>{decimal(razao(c.soma.freqPeso, c.soma.impressoes))}</td>
-                      <td>{pct(razao(c.soma.cliques_link, c.soma.impressoes), 2)}</td>
+                      <td className={TECNICA}>{inteiro(c.soma.impressoes)}</td>
+                      <td className={TECNICA}>{decimal(razao(c.soma.freqPeso, c.soma.impressoes))}</td>
+                      <td className={TECNICA}>{pct(razao(c.soma.cliques_link, c.soma.impressoes), 2)}</td>
                       {celulasFunil(c.soma)}
                       <td>{inteiro(c.soma.vendas)}</td>
                       <td className={destaque}>{moeda(razao(c.soma.gasto, c.soma.vendas), org.moeda)}</td>
@@ -367,9 +398,9 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
                   <tr className="font-semibold [&>td]:border-t-2 [&>td]:border-line-strong">
                     <td>Total</td>
                     <td>{moeda(total.gasto, org.moeda)}</td>
-                    <td>{inteiro(total.impressoes)}</td>
-                    <td>—</td>
-                    <td>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
+                    <td className={TECNICA}>{inteiro(total.impressoes)}</td>
+                    <td className={TECNICA}>—</td>
+                    <td className={TECNICA}>{pct(razao(total.cliques_link, total.impressoes), 2)}</td>
                     {celulasFunil(total)}
                     <td>{inteiro(total.vendas)}</td>
                     <td className={destaque}>{moeda(razao(total.gasto, total.vendas), org.moeda)}</td>
@@ -379,7 +410,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
               </tbody>
             </Tabela>
           </Cartao>
-        </div>
+        </ComDetalhes>
       )}
     </>
   );

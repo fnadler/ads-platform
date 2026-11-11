@@ -1,4 +1,5 @@
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import { Termo } from "@/components/Termo";
 import { decimal, inteiro, moeda, razao } from "@/lib/formato";
 import type { Soma } from "./soma";
 
@@ -18,36 +19,58 @@ function Testes({ total, cancelados }: { total: number; cancelados: number }) {
   );
 }
 
-export function colunasFunil(funil: Funil) {
+/**
+ * Colunas técnicas (o que a Meta conta pelo pixel) só aparecem com "Ver detalhes", quando a tabela está dentro de
+ * um bloco com o interruptor (ComDetalhes). Fora dele, aparecem sempre.
+ */
+export const TECNICA = "hidden group-has-[[data-detalhes]:checked]/detalhes:table-cell";
+
+export function colunasFunil(funil: Funil, { tecnicas = false }: { tecnicas?: boolean } = {}) {
+  const t = tecnicas ? TECNICA : "";
   if (funil === "venda_direta")
     return (
       <>
-        <th className="text-right">Compras (Meta)</th>
-        <th className="text-right">Pendentes</th>
+        <th className={`text-right ${t}`}>
+          <Termo id="comprasMeta">Compras (Meta)</Termo>
+        </th>
+        <th className="text-right">
+          <Termo id="pendentes">Pendentes</Termo>
+        </th>
       </>
     );
   return (
     <>
-      <th className="text-right">Leads (Meta)</th>
-      <th className="text-right">CPL</th>
-      <th className="text-right">Leads (sist.)</th>
-      {funil === "cadastro_teste_venda" && <th className="text-right">Testes</th>}
+      <th className={`text-right ${t}`}>
+        <Termo id="cadastrosMeta">Cadastros (Meta)</Termo>
+      </th>
+      <th className={`text-right ${t}`}>
+        <Termo id="custoCadastroMeta">Custo por cadastro (Meta)</Termo>
+      </th>
+      <th className="text-right">
+        <Termo id="cadastros">Cadastros</Termo>
+      </th>
+      {funil === "cadastro_teste_venda" && (
+        <th className="text-right">
+          <Termo id="testes">Testes</Termo>
+        </th>
+      )}
     </>
   );
 }
 
-export function celulasFunil(s: Soma, funil: Funil, moedaIso: string) {
+export function celulasFunil(s: Soma, funil: Funil, moedaIso: string, { tecnicas = false }: { tecnicas?: boolean } = {}) {
+  const t = tecnicas ? TECNICA : undefined;
   if (funil === "venda_direta")
     return (
       <>
-        <td>{inteiro(s.compras_meta)}</td>
+        <td className={t}>{inteiro(s.compras_meta)}</td>
         <td>{inteiro(s.vendas_pendentes)}</td>
       </>
     );
   return (
     <>
-      <td>{inteiro(s.leads_meta)}</td>
-      <td>{moeda(razao(s.gasto, s.leads_meta), moedaIso)}</td>
+      <td className={t}>{inteiro(s.leads_meta)}</td>
+      <td className={t}>{moeda(razao(s.gasto, s.leads_meta), moedaIso)}</td>
       <td>{inteiro(s.leads)}</td>
       {funil === "cadastro_teste_venda" && (
         <td>

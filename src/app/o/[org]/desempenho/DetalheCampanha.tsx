@@ -17,6 +17,7 @@ import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitur
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import type { LeadsVendas } from "@/lib/vendas/lista";
 import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
+import { Termo } from "@/components/Termo";
 import { somar, zero, type Linha, type Soma } from "./soma";
 import { celulasFunil, colunasFunil, destaque, roas, rotuloCancelados } from "./tabelas";
 
@@ -65,7 +66,7 @@ export interface DadosDetalhe {
   /** Últimos leads e vendas desta campanha no período (só na aba Cadastros e vendas). */
   leadsVendas?: LeadsVendas | null;
   fuso: string;
-  /** Leads e vendas (organização) já filtrado nesta campanha. */
+  /** Cadastros e vendas (organização) já filtrado nesta campanha. */
   rotaVendas: string;
 }
 
@@ -293,16 +294,18 @@ function AbaGeral(d: DadosDetalhe) {
 
       <Indicadores className={`grid-cols-1 sm:grid-cols-3`}>
         {direta ? (
-          <Indicador rotulo="Investido" valor={moeda(t.gasto, d.moeda)} detalhe="na Meta, no período" />
+          <Indicador rotulo="Investido" valor={moeda(t.gasto, d.moeda)} detalhe="na Meta, no período" explica="investido" />
         ) : (
           <Indicador
             rotulo="Custo por cadastro"
+            explica="custoCadastro"
             valor={moeda(razao(t.gasto, cadastros), d.moeda)}
             detalhe={`${moeda(t.gasto, d.moeda)} investidos ÷ ${inteiro(cadastros)} cadastros`}
           />
         )}
         <Indicador
           rotulo="Custo por venda"
+          explica="custoVenda"
           valor={moeda(razao(t.gasto, t.vendas), d.moeda)}
           detalhe={
             !maturidade
@@ -314,7 +317,8 @@ function AbaGeral(d: DadosDetalhe) {
           destaque
         />
         <Indicador
-          rotulo="Retorno (ROAS)"
+          rotulo="Retorno"
+          explica="retorno"
           valor={roas(t.receita, t.gasto)}
           detalhe={t.receita ? `${moeda(razao(t.receita, t.gasto), d.moeda)} de volta para cada R$ 1` : "quanto volta em vendas para cada R$ 1"}
           destaque
@@ -493,7 +497,7 @@ function AbaAnuncios(d: DadosDetalhe) {
           detalhe={`${inteiro(t.cliques_link)} cliques em ${inteiro(t.impressoes)} exibições`}
         />
         <Indicador rotulo="Custo para aparecer mil vezes" valor={moeda(razao(t.gasto * 1000, t.impressoes), d.moeda)} detalhe="sobe quando o leilão fica mais disputado" />
-        <Indicador rotulo="Vezes que cada pessoa viu" valor={`${decimal(razao(t.freqPeso, t.impressoes), 1)}×`} detalhe="em média, no período" />
+        <Indicador rotulo="Vezes que cada pessoa viu" explica="frequencia" valor={`${decimal(razao(t.freqPeso, t.impressoes), 1)}×`} detalhe="em média, no período" />
       </Indicadores>
       <SugestoesDaArea achados={achados} acoes={d.acoes} padrao="Os anúncios estão entregando e atraindo cliques normalmente" />
 
@@ -511,11 +515,17 @@ function AbaAnuncios(d: DadosDetalhe) {
             <thead>
               <tr>
                 <th>Conjunto</th>
-                <th className="text-right">Gasto</th>
+                <th className="text-right">
+                  <Termo id="investido">Investido</Termo>
+                </th>
                 {colunasFunil(d.funil)}
                 <th className="text-right">Vendas</th>
-                <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-                <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
+                <th className="!bg-accent-soft text-right !text-ink">
+                <Termo id="custoVenda">Custo por venda</Termo>
+              </th>
+                <th className="!bg-accent-soft text-right !text-ink">
+                <Termo id="retorno">Retorno</Termo>
+              </th>
               </tr>
             </thead>
             <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
@@ -541,13 +551,23 @@ function AbaAnuncios(d: DadosDetalhe) {
           <thead>
             <tr>
               <th>Anúncio</th>
-              <th className="text-right">Gasto</th>
-              <th className="text-right">Freq.</th>
-              <th className="text-right">CTR</th>
+              <th className="text-right">
+                  <Termo id="investido">Investido</Termo>
+                </th>
+              <th className="text-right">
+                <Termo id="frequencia">Frequência</Termo>
+              </th>
+              <th className="text-right">
+                <Termo id="ctr">Taxa de cliques</Termo>
+              </th>
               {colunasFunil(d.funil)}
               <th className="text-right">Vendas</th>
-              <th className="!bg-accent-soft text-right !text-ink">Custo/venda</th>
-              <th className="!bg-accent-soft text-right !text-ink">ROAS</th>
+              <th className="!bg-accent-soft text-right !text-ink">
+                <Termo id="custoVenda">Custo por venda</Termo>
+              </th>
+              <th className="!bg-accent-soft text-right !text-ink">
+                <Termo id="retorno">Retorno</Termo>
+              </th>
             </tr>
           </thead>
           <tbody className="[&_td:not(:first-child)]:num [&_td:not(:first-child)]:whitespace-nowrap">
@@ -852,7 +872,7 @@ function AbaVendas(d: DadosDetalhe) {
       <Indicadores className={`grid-cols-2 ${comTeste || direta ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         {direta ? (
           <>
-            <Indicador rotulo="Compras (Meta)" valor={inteiro(t.compras_meta)} detalhe="o que o Gerenciador conta" />
+            <Indicador rotulo="Compras (Meta)" valor={inteiro(t.compras_meta)} detalhe="o que o Gerenciador conta" explica="comprasMeta" />
             <Indicador
               rotulo="Pagamento pendente"
               valor={inteiro(t.vendas_pendentes)}
@@ -861,20 +881,22 @@ function AbaVendas(d: DadosDetalhe) {
           </>
         ) : (
           <>
-            <Indicador rotulo="Cadastros no sistema" valor={inteiro(t.leads)} detalhe="chegaram com o anúncio de origem" />
+            <Indicador rotulo="Cadastros" valor={inteiro(t.leads)} detalhe="chegaram com o anúncio de origem" explica="cadastros" />
             {comTeste && (
               <Indicador
                 rotulo="Testes grátis"
+                explica="testes"
                 valor={inteiro(t.testes)}
                 detalhe={t.leads ? `${pct(razao(t.testes, t.leads), 0)} dos cadastros${t.testes_cancelados ? ` · ${rotuloCancelados(t.testes_cancelados)}` : ""}` : undefined}
               />
             )}
           </>
         )}
-        <Indicador rotulo="Vendas" valor={inteiro(t.vendas)} detalhe={t.receita ? `${moeda(t.receita, d.moeda)} de receita` : "pagamentos confirmados"} />
-        <Indicador rotulo="Custo por venda" valor={moeda(razao(t.gasto, t.vendas), d.moeda)} detalhe="investido ÷ vendas" destaque />
+        <Indicador rotulo="Vendas" valor={inteiro(t.vendas)} detalhe={t.receita ? `${moeda(t.receita, d.moeda)} recebidos` : "pagamentos confirmados"} explica="vendas" />
+        <Indicador rotulo="Custo por venda" valor={moeda(razao(t.gasto, t.vendas), d.moeda)} detalhe="investido ÷ vendas" explica="custoVenda" destaque />
         <Indicador
-          rotulo="Retorno (ROAS)"
+          rotulo="Retorno"
+          explica="retorno"
           valor={roas(t.receita, t.gasto)}
           detalhe={t.receita ? `${moeda(razao(t.receita, t.gasto), d.moeda)} de volta para cada R$ 1` : undefined}
           destaque
@@ -933,7 +955,7 @@ function AbaVendas(d: DadosDetalhe) {
             </>
           ) : (
             <>
-              <strong className="text-ink">Cadastros (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong className="text-ink">Cadastros no sistema</strong> é o que
+              <strong className="text-ink">Cadastros (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong className="text-ink">Cadastros</strong> é o que
               chegou à sua fonte de venda com o anúncio de origem; é sobre ele que calculamos {comTeste ? "testes, vendas" : "vendas"} e o retorno.
               {comTeste && " Testes conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece."} A diferença costuma
               vir de quem bloqueia o rastreio no navegador ou chega sem os parâmetros do anúncio.
@@ -950,7 +972,7 @@ function ListasDaCampanha({ d, lv }: { d: DadosDetalhe; lv: LeadsVendas }) {
   const direta = d.funil === "venda_direta";
   const verTudo = (
     <Link href={d.rotaVendas} className="text-sm font-medium text-accent-text">
-      Ver em Leads e vendas
+      Ver em Cadastros e vendas
     </Link>
   );
   return (

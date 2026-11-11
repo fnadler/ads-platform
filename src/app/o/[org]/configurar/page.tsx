@@ -752,7 +752,7 @@ O formato completo está em Configurações, no cartão Webhook genérico.`;
         ),
         lateral: !plataforma && o.plataforma === "stripe" && (
           <Cartao titulo="E o pagamento?">
-            <p className="text-sm text-ink-2">Ele não entra neste teste, para não gerar uma cobrança real. O primeiro evento real aparece em Leads e vendas.</p>
+            <p className="text-sm text-ink-2">Ele não entra neste teste, para não gerar uma cobrança real. O primeiro evento real aparece em Cadastros e vendas.</p>
           </Cartao>
         ),
       };

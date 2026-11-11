@@ -6,13 +6,14 @@ import { Aviso, Botao, Cartao, Indicador, Indicadores, Selecao, Titulo, Vazio } 
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { listarCampanhas } from "@/lib/campanhas/lista";
 import { SeletorPeriodo } from "@/components/SeletorPeriodo";
+import { Termo } from "@/components/Termo";
 import { dataHora, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { comDias, diaNoFuso, intervalo, lerDias } from "@/lib/periodo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { importarCsv } from "@/lib/vendas/acoes";
 import { carregarLeadsVendas, SEM_CAMPANHA } from "@/lib/vendas/lista";
 
-export const metadata: Metadata = { title: "Leads e vendas" };
+export const metadata: Metadata = { title: "Cadastros e vendas" };
 
 
 export default async function Vendas({ params, searchParams }: PageProps<"/o/[org]/vendas">) {
@@ -33,6 +34,7 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
   const linkVendas = (extra: { campanha?: string | null; dias?: number }) =>
     comDias(`${rotaOrg(slug, "/vendas")}${(extra.campanha === undefined ? filtro : extra.campanha) ? `?campanha=${extra.campanha === undefined ? filtro : extra.campanha}` : ""}`, extra.dias ?? dias);
   const comTeste = org.funil === "cadastro_teste_venda";
+  const direta = org.funil === "venda_direta";
   // Eventos recusados na última semana (sem isso, uma falha de envio só apareceria no log de quem enviou).
   const { data: recusados, count: totalRecusados } = temPapel(papel, "gestor")
     ? await supabase
@@ -50,7 +52,7 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
   return (
     <>
       <Titulo
-        sobrancelha="Leads e vendas"
+        sobrancelha={direta ? "Vendas" : "Cadastros e vendas"}
         descricao="Tudo o que chegou das fontes de venda, de todas as campanhas e também o que veio sem campanha. Para ver uma campanha só, filtre abaixo ou abra a campanha em Desempenho."
         acoes={
           <div className="flex flex-wrap items-end gap-3">
@@ -94,10 +96,10 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
           </Aviso>
         )}
         {!filtro && (
-        <Cartao titulo={`Cobertura de atribuição · últimos ${dias} dias`} descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
+        <Cartao titulo={<Termo id="cobertura">{`Cobertura de atribuição · últimos ${dias} dias`}</Termo>} descricao="Decisões com cobertura baixa enganam: o que não tem anúncio de origem não aparece no desempenho dos criativos.">
           <Indicadores className="sm:grid-cols-3">
             <Indicador
-              rotulo="Leads com anúncio"
+              rotulo="Cadastros com anúncio"
               valor={pct(razao(Number(c.leads_com_anuncio), Number(c.leads)), 0)}
               detalhe={`${inteiro(Number(c.leads_com_anuncio))} de ${inteiro(Number(c.leads))}`}
             />
@@ -107,22 +109,22 @@ export default async function Vendas({ params, searchParams }: PageProps<"/o/[or
               detalhe={`${inteiro(Number(c.vendas_com_anuncio))} de ${inteiro(Number(c.vendas))}`}
             />
             <Indicador
-              rotulo="Receita com anúncio"
+              rotulo="Recebido com anúncio"
               valor={pct(coberturaReceita, 0)}
               detalhe={`${moeda(Number(c.receita_com_anuncio), org.moeda)} de ${moeda(Number(c.receita), org.moeda)}`}
               destaque
             />
           </Indicadores>
-          <p className="mt-3 text-sm text-ink-2">Inclui vendas de clientes orgânicos e de antes da campanha: cobertura abaixo de 100% é esperada. O que importa é que os leads vindos de anúncio cheguem com o anúncio.</p>
+          <p className="mt-3 text-sm text-ink-2">Inclui vendas de clientes orgânicos e de antes da campanha: cobertura abaixo de 100% é esperada. O que importa é que os cadastros vindos de anúncio cheguem com o anúncio.</p>
         </Cartao>
         )}
 
-        <Cartao titulo={`Últimos leads · ${dias} dias`} rente>
+        <Cartao titulo={`Últimos cadastros · ${dias} dias`} rente>
           {dados.leads.length ? (
             <TabelaLeads dados={dados} fuso={org.fuso} linkCampanha={linkCampanha} comTeste={comTeste} />
           ) : (
             <div className="px-5 pb-5">
-              <Vazio titulo={`Nenhum lead${filtro ? " neste filtro" : ""} nos últimos ${dias} dias`}>
+              <Vazio titulo={`Nenhum cadastro${filtro ? " neste filtro" : ""} nos últimos ${dias} dias`}>
                 {filtro ? "Escolha outra campanha, um período maior ou veja todas." : "Escolha um período maior. Se nunca chegou nenhum, configure o webhook (Configurações) e faça o teste de ponta a ponta (Rastreio)."}
               </Vazio>
             </div>

@@ -197,18 +197,20 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
 
         {t.gasto > 0 && (
           <Indicadores className={`grid-cols-2 ${direta ? "xl:grid-cols-5" : "xl:grid-cols-6"}`}>
-            <Indicador rotulo="Investido" valor={moeda(t.gasto, org.moeda)} detalhe={<Variacao v={variacao(t.gasto, antes.total.gasto)} neutro dias={dias} />} />
-            {!direta && <Indicador rotulo="Cadastros" valor={inteiro(t.leads)} detalhe={<Variacao v={variacao(t.leads, antes.total.leads)} dias={dias} />} />}
-            <Indicador rotulo="Vendas" valor={inteiro(t.vendas)} detalhe={<Variacao v={variacao(t.vendas, antes.total.vendas)} dias={dias} />} />
-            <Indicador rotulo="Recebido em vendas" valor={moeda(t.receita, org.moeda)} detalhe={<Variacao v={variacao(t.receita, antes.total.receita)} dias={dias} />} />
+            <Indicador rotulo="Investido" explica="investido" valor={moeda(t.gasto, org.moeda)} detalhe={<Variacao v={variacao(t.gasto, antes.total.gasto)} neutro dias={dias} />} />
+            {!direta && <Indicador rotulo="Cadastros" explica="cadastros" valor={inteiro(t.leads)} detalhe={<Variacao v={variacao(t.leads, antes.total.leads)} dias={dias} />} />}
+            <Indicador rotulo="Vendas" explica="vendas" valor={inteiro(t.vendas)} detalhe={<Variacao v={variacao(t.vendas, antes.total.vendas)} dias={dias} />} />
+            <Indicador rotulo="Recebido em vendas" explica="recebido" valor={moeda(t.receita, org.moeda)} detalhe={<Variacao v={variacao(t.receita, antes.total.receita)} dias={dias} />} />
             <Indicador
               rotulo="Custo por venda"
+              explica="custoVenda"
               valor={moeda(custoPorVenda(t), org.moeda)}
               detalhe={<Variacao v={variacao(custoPorVenda(t), custoPorVenda(antes.total))} menorEMelhor dias={dias} />}
               destaque
             />
             <Indicador
               rotulo="De volta para cada R$ 1"
+              explica="retorno"
               valor={r === null ? "—" : moeda(r, org.moeda)}
               detalhe={r === null ? undefined : <Variacao v={vRetorno} dias={dias} />}
               destaque

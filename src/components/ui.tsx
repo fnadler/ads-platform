@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element -- miniaturas vêm de URL assinada do Storage, que expira */
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
+import type { IdTermo } from "@/lib/glossario";
 import { IconeCheck, IconeCirculo, IconeExclamacao, IconeInfo, IconeX } from "./Icones";
+import { Termo } from "./Termo";
 
 // Peças de interface compartilhadas (Server Components; sem estado). Visual Adverdad: tokens em
 // src/app/tokens.css (bg, surface, ink, line, accent, lime, ok/warn/err).
@@ -152,10 +154,23 @@ export function Indicadores({ children, className }: { children: ReactNode; clas
   );
 }
 
-export function Indicador({ rotulo, valor, detalhe, destaque }: { rotulo: ReactNode; valor: ReactNode; detalhe?: ReactNode; destaque?: boolean }) {
+export function Indicador({
+  rotulo,
+  valor,
+  detalhe,
+  destaque,
+  explica,
+}: {
+  rotulo: ReactNode;
+  valor: ReactNode;
+  detalhe?: ReactNode;
+  destaque?: boolean;
+  /** Termo do glossário: mostra o "?" com a explicação ao lado do nome. */
+  explica?: IdTermo;
+}) {
   return (
     <div className={juntar("flex min-w-0 flex-col gap-1 p-4 sm:p-5", destaque ? "bg-accent-soft" : "bg-surface")}>
-      <span className="text-sm text-ink-2">{rotulo}</span>
+      <div className="text-sm text-ink-2">{explica ? <Termo id={explica}>{rotulo}</Termo> : rotulo}</div>
       <span className="num-display text-2xl text-ink sm:text-[28px] sm:leading-9">{valor}</span>
       {detalhe && <span className="text-xs text-ink-3">{detalhe}</span>}
     </div>

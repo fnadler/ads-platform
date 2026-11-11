@@ -81,7 +81,7 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
               titulo="Definição"
               descricao={
                 tipo === "funil"
-                  ? "A lista sai dos leads e vendas do sistema e é enviada à Meta só como hash (e-mail e telefone criptografados), atualizada todo dia às 4h."
+                  ? "A lista sai dos cadastros e vendas do sistema e é enviada à Meta só como hash (e-mail e telefone criptografados), atualizada todo dia às 4h."
                   : tipo === "site"
                     ? "Pessoas que abriram qualquer página do site com o pixel, no período escolhido."
                     : "A Meta encontra pessoas parecidas com o público de origem, no Brasil. 1% é o mais parecido; 10%, o mais amplo."

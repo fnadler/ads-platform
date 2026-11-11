@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Termo } from "@/components/Termo";
 import { Etiqueta, Tabela, type Tom } from "@/components/ui";
 import { dataHora, moeda } from "@/lib/formato";
 import type { LeadsVendas } from "@/lib/vendas/lista";
 
-// Tabelas de leads e de vendas. Na organização mostram de qual campanha veio cada um (com link para o
+// Tabelas de cadastros (leads) e de vendas. Na organização mostram de qual campanha veio cada um (com link para o
 // desempenho dela); dentro da campanha a coluna sai, porque o contexto já diz.
 
 const ATRIBUICAO: Record<string, { rotulo: string; tom: Tom }> = {
@@ -49,8 +50,14 @@ export function TabelaLeads({ dados, fuso, linkCampanha, comTeste }: Contexto & 
         <tr>
           <th>Quando</th>
           {linkCampanha && <th>Campanha</th>}
-          <th>Anúncio</th>
-          {comTeste && <th>Teste</th>}
+          <th>
+            <Termo id="atribuicao">Anúncio</Termo>
+          </th>
+          {comTeste && (
+            <th>
+              <Termo id="testes">Teste</Termo>
+            </th>
+          )}
           <th>Pagante</th>
         </tr>
       </thead>
