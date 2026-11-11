@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { IconeMais } from "@/components/Icones";
 import { BotaoLink, Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { textoTamanhoMeta, TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
 import { rotaOrg } from "@/lib/rotas";
@@ -37,7 +37,7 @@ const NOVOS: Array<{ tipo: TipoPublico; descricao: string }> = [
 
 export default async function Publicos({ params }: PageProps<"/o/[org]/publicos">) {
   const { org: slug } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirGestao(slug);
   const { data: publicos } = await supabase
     .from("publicos")
     .select("id, nome, tipo, situacao, estimativa, meta_tamanho, atualizado_em")

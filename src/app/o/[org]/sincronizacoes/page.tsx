@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
+import Link from "next/link";
+import { IconeVoltar } from "@/components/Icones";
 import { Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, inteiro } from "@/lib/formato";
 import { sincronizarConta } from "@/lib/jobs/acoes";
+import { rotaOrg } from "@/lib/rotas";
 
 export const metadata: Metadata = { title: "Sincronizações" };
 
@@ -17,7 +20,7 @@ const MODO: Record<string, string> = { carga: "Histórico", incremental: "Autom�
 
 export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sincronizacoes">) {
   const { org: slug } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirGestao(slug);
   const [{ data: contas }, { data: execucoes }, { data: publicos }, { data: campanhas }] = await Promise.all([
     supabase.from("contas_anuncio").select("account_id, nome").eq("organizacao_id", org.id).eq("ativa", true),
     supabase.from("sincronizacoes").select("*").eq("organizacao_id", org.id).order("criado_em", { ascending: false }).limit(50),
@@ -39,7 +42,13 @@ export default async function Sincronizacoes({ params }: PageProps<"/o/[org]/sin
 
   return (
     <>
-      <Titulo sobrancelha="Sincronizações" descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook. O Clarity, se conectado, é lido à meia-noite e guarda o dia anterior. A velocidade das páginas dos anúncios ativos é testada às 6h.">
+      <Titulo
+        sobrancelha={
+          <Link href={rotaOrg(slug, "/configuracoes")} className="inline-flex items-center gap-1 normal-case tracking-normal text-accent-text">
+            <IconeVoltar tamanho={14} /> Configurações
+          </Link>
+        }
+        descricao="A Meta é atualizada sozinha às 6h, 12h e 18h (reescreve os últimos 7 dias, porque a Meta revisa conversões). As vendas do Stripe chegam na hora, pelo webhook. O Clarity, se conectado, é lido à meia-noite e guarda o dia anterior. A velocidade das páginas dos anúncios ativos é testada às 6h.">
         Quando os números foram lidos
       </Titulo>
       <div className="grid gap-6">

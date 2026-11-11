@@ -1,20 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Formulario } from "@/components/Formulario";
+import { IconeExterno } from "@/components/Icones";
 import { Aviso, Campo, Cartao, Etiqueta, Tabela, Titulo, Vazio } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
+import { linkGerenciador, listarCampanhas } from "@/lib/campanhas/lista";
 import { dataHora } from "@/lib/formato";
 import { criarRascunho } from "@/lib/publicacao/acoes";
-import { rotaOrg } from "@/lib/rotas";
-import { SITUACAO_CAMPANHA } from "./situacao";
+import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 
 export const metadata: Metadata = { title: "Campanhas" };
 
 export default async function Campanhas({ params }: PageProps<"/o/[org]/campanhas">) {
   const { org: slug } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
-  const [{ data: campanhas }, { data: config }, { data: conexao }] = await Promise.all([
-    supabase.from("campanhas_assistente").select("id, nome, status, criado_em, ativada_em").eq("organizacao_id", org.id).order("criado_em", { ascending: false }),
+  const { org, papel, supabase } = await exigirGestao(slug);
+  const [campanhas, { data: config }, { data: conexao }] = await Promise.all([
+    listarCampanhas(supabase, org.id),
     supabase.from("config_publicacao").select("page_id, pixel_id").eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("conexoes").select("status").eq("organizacao_id", org.id).eq("tipo", "meta_publicacao").maybeSingle(),
   ]);
@@ -22,7 +23,7 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
 
   return (
     <>
-      <Titulo sobrancelha="Campanhas" descricao="Monte a campanha aqui e o sistema cria tudo na Meta, já com o rastreio certo. Tudo nasce pausado: você confere no Gerenciador e ativa quando quiser.">
+      <Titulo sobrancelha="Campanhas" descricao="Todas as campanhas da conta: as montadas aqui e as criadas direto no Gerenciador da Meta. Ao montar aqui, o sistema cria tudo na Meta já com o rastreio certo, e tudo nasce pausado.">
         Monte aqui, nós criamos na Meta
       </Titulo>
       <div className="grid gap-6">
@@ -44,30 +45,55 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
             </Formulario>
           </Cartao>
         )}
-        <Cartao titulo="Campanhas do assistente" rente>
-          {campanhas?.length ? (
+        <Cartao titulo="Campanhas" rente>
+          {campanhas.length ? (
             <Tabela>
               <thead>
                 <tr>
-                  <th>Nome</th>
+                  <th>Campanha</th>
                   <th>Situação</th>
-                  <th>Criada em</th>
+                  <th>Origem</th>
+                  <th>
+                    <span className="sr-only">Atalhos</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {campanhas.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <Link href={rotaOrg(slug, `/campanhas/${c.id}`)} className="font-medium text-ink hover:text-accent-text">
-                        {c.nome}
-                      </Link>
-                    </td>
-                    <td>
-                      <Etiqueta tom={SITUACAO_CAMPANHA[c.status].tom}>{SITUACAO_CAMPANHA[c.status].rotulo}</Etiqueta>
-                    </td>
-                    <td>{dataHora(c.criado_em, org.fuso)}</td>
-                  </tr>
-                ))}
+                {campanhas.map((c) => {
+                  const gerenciador = linkGerenciador(c.accountId, c.metaId);
+                  return (
+                    <tr key={c.assistenteId ?? c.metaId}>
+                      <td>
+                        {c.assistenteId ? (
+                          <Link href={rotaOrg(slug, `/campanhas/${c.assistenteId}`)} className="font-medium text-ink hover:text-accent-text">
+                            {c.nome}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-ink">{c.nome}</span>
+                        )}
+                        {c.criadaEm && <div className="text-xs text-ink-3">Criada em {dataHora(c.criadaEm, org.fuso)}</div>}
+                      </td>
+                      <td>
+                        <Etiqueta tom={c.situacao.tom}>{c.situacao.rotulo}</Etiqueta>
+                      </td>
+                      <td className="whitespace-nowrap text-sm text-ink-2">{c.origem === "plataforma" ? "Montada aqui" : "Criada no Gerenciador"}</td>
+                      <td>
+                        <div className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm">
+                          {c.metaId && (
+                            <Link href={rotaDesempenho(slug, c.metaId)} className="whitespace-nowrap font-medium text-accent-text">
+                              Ver desempenho
+                            </Link>
+                          )}
+                          {gerenciador && (
+                            <a href={gerenciador} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 whitespace-nowrap text-ink-2 hover:text-ink">
+                              Gerenciador <IconeExterno tamanho={14} />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Tabela>
           ) : (

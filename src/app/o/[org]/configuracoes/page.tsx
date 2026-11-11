@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
 import { IconeSeta } from "@/components/Icones";
 import { Aviso, BotaoLink, Campo, Cartao, Etiqueta, Selecao, Tabela, Titulo, type Tom } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { alterarConta, conectarMeta, salvarFunil, salvarMetricas } from "@/lib/conexoes/acoes";
 import { dataHora, decimal } from "@/lib/formato";
 import { rotaOrg } from "@/lib/rotas";
@@ -33,7 +33,7 @@ interface Conexao {
 
 export default async function Configuracoes({ params }: PageProps<"/o/[org]/configuracoes">) {
   const { org: slug } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirGestao(slug);
   const dono = papel === "dono";
   const gestor = temPapel(papel, "gestor");
   const [{ data: conexoes }, { data: contas }, { data: metricas }, { data: vistas }, base] = await Promise.all([
@@ -74,6 +74,10 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
               Assistente de configuração
               <IconeSeta tamanho={16} />
             </BotaoLink>
+            <BotaoLink variante="secundario" href={rotaOrg(slug, "/sincronizacoes")}>
+              Sincronizações
+              <IconeSeta tamanho={16} />
+            </BotaoLink>
             <BotaoLink variante="secundario" href={rotaOrg(slug, "/configuracoes/membros")}>
               Membros e convites
               <IconeSeta tamanho={16} />
@@ -84,7 +88,7 @@ export default async function Configuracoes({ params }: PageProps<"/o/[org]/conf
         Conexões e pessoas
       </Titulo>
       <div className="grid gap-6">
-        <Cartao titulo="Como você vende" descricao="Define o que o Desempenho e o Início acompanham.">
+        <Cartao titulo="Como você vende" descricao="Define o que o Resumo e o Desempenho acompanham.">
           {gestor ? (
             <Formulario acao={salvarFunil} rotulo="Salvar" variante="secundario" className="flex flex-col gap-3">
               {hidden}

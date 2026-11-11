@@ -3,15 +3,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AtualizarSozinho } from "@/components/AtualizarSozinho";
 import { Formulario } from "@/components/Formulario";
-import { IconeExterno, IconeVoltar } from "@/components/Icones";
-import { Aviso, Campo, Cartao, classeAreaTexto, corAnuncio, Etiqueta, MiniaturaCriativo, Selecao, Tabela, Titulo } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { IconeExterno, IconeSeta, IconeVoltar } from "@/components/Icones";
+import { Aviso, BotaoLink, Campo, Cartao, classeAreaTexto, corAnuncio, Etiqueta, MiniaturaCriativo, Selecao, Tabela, Titulo } from "@/components/ui";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, moeda } from "@/lib/formato";
 import { ativarCampanha, copiarTextosParaTodos, enviarParaMeta, excluirRascunho, removerCriativo, salvarCriativo, salvarRascunho, validarNaMeta } from "@/lib/publicacao/acoes";
 import { BUCKET_UPLOADS } from "@/lib/publicacao/job";
 import { CHAMADAS, EVENTOS, validarRascunho, type ConfigPublicacao, type CriativoRascunho } from "@/lib/publicacao/modelo";
 import { TIPOS_PUBLICO, type Publico } from "@/lib/publicos/modelo";
-import { rotaOrg } from "@/lib/rotas";
+import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { SITUACAO_CAMPANHA } from "../situacao";
 import { CamposOrcamento } from "./CamposOrcamento";
 import { EnviarArquivos } from "./EnviarArquivos";
@@ -28,7 +28,7 @@ const SITUACAO_CRIATIVO: Record<string, string> = {
 
 export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas/[id]">) {
   const { org: slug, id } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirGestao(slug);
   const [{ data: c }, { data: criativos }, { data: config }, { data: operacoes }, { data: publicosOrg }, { data: conjuntos }] = await Promise.all([
     supabase.from("campanhas_assistente").select("*").eq("id", id).eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("criativos_assistente").select("*").eq("campanha_id", id).eq("organizacao_id", org.id).order("ordem").order("criado_em"),
@@ -86,7 +86,17 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
             <IconeVoltar tamanho={14} /> Campanhas
           </Link>
         }
-        acoes={<Etiqueta tom={SITUACAO_CAMPANHA[c.status].tom}>{SITUACAO_CAMPANHA[c.status].rotulo}</Etiqueta>}
+        acoes={
+          <div className="flex flex-wrap items-center gap-3">
+            <Etiqueta tom={SITUACAO_CAMPANHA[c.status].tom}>{SITUACAO_CAMPANHA[c.status].rotulo}</Etiqueta>
+            {c.meta_campaign_id && (
+              <BotaoLink variante="secundario" href={rotaDesempenho(slug, c.meta_campaign_id)}>
+                Ver desempenho
+                <IconeSeta tamanho={16} />
+              </BotaoLink>
+            )}
+          </div>
+        }
       >
         {c.nome}
       </Titulo>

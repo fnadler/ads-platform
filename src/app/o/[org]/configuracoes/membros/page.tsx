@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Formulario } from "@/components/Formulario";
 import { Campo, Cartao, Selecao, Tabela, Titulo } from "@/components/ui";
-import { exigirOrganizacao, ROTULO_PAPEL, type Papel } from "@/lib/auth/sessao";
+import { exigirGestao, ROTULO_PAPEL, type Papel } from "@/lib/auth/sessao";
 import { alterarPapel, convidar, removerMembro, revogarConvite } from "@/lib/organizacoes/acoes";
 
 export const metadata: Metadata = { title: "Membros" };
@@ -14,7 +14,7 @@ const DESCRICAO_PAPEL: Record<Papel, string> = {
 
 export default async function Membros({ params }: PageProps<"/o/[org]/configuracoes/membros">) {
   const { org: slug } = await params;
-  const { org, papel, usuario, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, usuario, supabase } = await exigirGestao(slug);
   const ehDono = papel === "dono";
   const [{ data: membros }, { data: convites }] = await Promise.all([
     supabase.rpc("membros_da_organizacao", { p_org: org.id }),

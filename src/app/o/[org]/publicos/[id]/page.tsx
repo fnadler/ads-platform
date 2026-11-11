@@ -5,7 +5,7 @@ import { AtualizarSozinho } from "@/components/AtualizarSozinho";
 import { Formulario } from "@/components/Formulario";
 import { IconeVoltar } from "@/components/Icones";
 import { Aviso, Campo, Cartao, Etiqueta, Selecao, Titulo } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { enviarPublico, excluirPublico, salvarPublico } from "@/lib/publicos/acoes";
 import { DefinicaoDetalhado, MINIMO_PERSONALIZADO, PISO_TAMANHO_META, SEGMENTOS, textoTamanhoMeta, TIPOS_PUBLICO, type TipoPublico } from "@/lib/publicos/modelo";
@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: "Público" };
 export default async function Publico({ params, searchParams }: PageProps<"/o/[org]/publicos/[id]">) {
   const { org: slug, id } = await params;
   const busca = await searchParams;
-  const { org, papel, supabase } = await exigirOrganizacao(slug, "leitura");
+  const { org, papel, supabase } = await exigirGestao(slug);
   const gestor = temPapel(papel, "gestor");
   const novo = id === "novo";
   const [{ data: p }, { data: config }, { data: origens }] = await Promise.all([

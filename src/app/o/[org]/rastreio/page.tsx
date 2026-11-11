@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Copiavel, Formulario } from "@/components/Formulario";
 import { Aviso, Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
-import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
+import { exigirGestao, temPapel } from "@/lib/auth/sessao";
 import { dataHora } from "@/lib/formato";
 import { iniciarVerificacao, relerAnuncios, verificarAgora } from "@/lib/rastreio/acoes";
 import { avaliarDestino, avaliarParametros, PARAMETROS_META, type ResultadoCampo } from "@/lib/rastreio/regras";
@@ -26,7 +26,7 @@ const VEICULACAO: Record<string, string> = {
 
 export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio">) {
   const { org: slug } = await params;
-  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirGestao(slug);
   const gestor = temPapel(papel, "gestor");
   const [{ data: anuncios }, { data: verificacoes }, { data: checkout }] = await Promise.all([
     supabase

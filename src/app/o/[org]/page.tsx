@@ -1,20 +1,21 @@
 import { IconeCheck, IconeSeta } from "@/components/Icones";
 import { GradeAchados, ResumoLeitura } from "@/components/LeituraCampanha";
 import { Aviso, BotaoLink, Etiqueta, Indicador, Indicadores, Titulo } from "@/components/ui";
-import { exigirOrganizacao } from "@/lib/auth/sessao";
+import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { dataHora, inteiro } from "@/lib/formato";
 import { campanhasAtivas, carregarLeitura } from "@/lib/leitura/carregar";
 import { lerFatos } from "@/lib/onboarding/fatos";
 import { resumoEtapas, telaInicial, telas } from "@/lib/onboarding/modelo";
 import { avaliarParametros } from "@/lib/rastreio/regras";
-import { rotaOrg } from "@/lib/rotas";
+import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { TIPOS_PLATAFORMA } from "@/lib/vendas/plataformas/catalogo";
 
 // Início: a configuração é uma só, a do assistente. Cada etapa retoma onde parou; o que o sistema confere define o
 // que falta. Abaixo, só o que muda depois de configurado: anúncios sem rastreio e o que está chegando.
 export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]">) {
   const { org: slug } = await params;
-  const { org, supabase } = await exigirOrganizacao(slug);
+  const { org, papel, supabase } = await exigirOrganizacao(slug);
+  const gestor = temPapel(papel, "gestor");
   const [{ data: conexoes }, { data: sinc }, { data: anuncios }, { count: leads }, { count: vendas }] = await Promise.all([
     supabase.from("conexoes").select("tipo").eq("organizacao_id", org.id),
     supabase
@@ -50,7 +51,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
   return (
     <>
       <Titulo
-        sobrancelha="Início"
+        sobrancelha="Resumo"
         descricao={
           faltam
             ? `${faltam === 1 ? "Falta 1 etapa" : `Faltam ${faltam} etapas`}. O rastreio precisa estar certo antes de a campanha começar.`
@@ -74,8 +75,13 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
       <div className="grid gap-5">
         {semRastreio > 0 && (
           <Aviso tom="erro">
-            <strong>{inteiro(semRastreio)} anúncio(s) ativo(s) ou em análise sem rastreio.</strong> As vendas deles chegam sem o anúncio de origem. Corrija em{" "}
-            <a href={rotaOrg(slug, "/rastreio")}>Rastreio</a>.
+            <strong>{inteiro(semRastreio)} anúncio(s) ativo(s) ou em análise sem rastreio.</strong> As vendas deles chegam sem o anúncio de origem.
+            {gestor && (
+              <>
+                {" "}
+                Corrija em <a href={rotaOrg(slug, "/rastreio")}>Gerenciar › Rastreio</a>.
+              </>
+            )}
           </Aviso>
         )}
         {atencao.map((c) => (
@@ -88,7 +94,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <ResumoLeitura achados={c.leitura.achados} />
-                <BotaoLink variante="secundario" href={rotaOrg(slug, `/desempenho?campanha=${c.id}`)}>
+                <BotaoLink variante="secundario" href={rotaDesempenho(slug, c.id)}>
                   Ver a campanha
                   <IconeSeta tamanho={16} />
                 </BotaoLink>
@@ -97,6 +103,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             <GradeAchados achados={c.achados} />
           </section>
         ))}
+        {gestor && (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <ol className="overflow-hidden rounded-lg border border-line bg-surface shadow-card">
             {etapas.map((e) => {
@@ -149,6 +156,7 @@ export default async function InicioOrganizacao({ params }: PageProps<"/o/[org]"
             )}
           </aside>
         </div>
+        )}
         <Indicadores className="grid-cols-1 sm:grid-cols-3">
           <Indicador rotulo="Leads" valor={inteiro(leads ?? 0)} detalhe="recebidos até agora" />
           <Indicador rotulo="Vendas" valor={inteiro(vendas ?? 0)} detalhe="pagas até agora" />

@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { AlternarTema } from "@/components/AlternarTema";
 import { IconeSair } from "@/components/Icones";
-import { Navegacao, type ItemNavegacao } from "@/components/Navegacao";
-import { ehAdminPlataforma, exigirOrganizacao, ROTULO_PAPEL } from "@/lib/auth/sessao";
+import { Navegacao, type SecaoNavegacao } from "@/components/Navegacao";
+import { ehAdminPlataforma, exigirOrganizacao, ROTULO_PAPEL, temPapel } from "@/lib/auth/sessao";
 import { rotaOrg } from "@/lib/rotas";
 
 const iniciais = (nome: string) =>
@@ -18,16 +18,30 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
   const { org: slug } = await params;
   const [{ org, papel, usuario }, admin] = await Promise.all([exigirOrganizacao(slug), ehAdminPlataforma()]);
   const r = (resto: string) => rotaOrg(org.slug, resto);
-  const itens: ItemNavegacao[] = [
-    { href: r(""), rotulo: "Início", icone: "inicio", exato: true },
-    { href: r("/desempenho"), rotulo: "Desempenho", icone: "desempenho" },
-    { href: r("/campanhas"), rotulo: "Campanhas", icone: "campanhas" },
-    { href: r("/publicos"), rotulo: "Públicos", icone: "publicos" },
-    { href: r("/rastreio"), rotulo: "Rastreio", icone: "rastreio" },
-    { href: r("/vendas"), rotulo: "Leads e vendas", icone: "leads" },
-    { href: r("/sincronizacoes"), rotulo: "Sincronizações", icone: "sincronizacoes" },
-    { href: r("/configuracoes"), rotulo: "Configurações", icone: "configuracoes" },
-    ...(admin ? [{ href: "/admin", rotulo: "Administração", icone: "admin" as const }] : []),
+  // Analisar: o que os resultados dizem (todos os papéis). Gerenciar: montar e manter (gestor e dono).
+  const secoes: SecaoNavegacao[] = [
+    {
+      titulo: "Analisar",
+      itens: [
+        { href: r(""), rotulo: "Resumo", icone: "inicio", exato: true },
+        { href: r("/desempenho"), rotulo: "Desempenho", icone: "desempenho" },
+        { href: r("/vendas"), rotulo: "Leads e vendas", icone: "leads" },
+      ],
+    },
+    ...(temPapel(papel, "gestor")
+      ? [
+          {
+            titulo: "Gerenciar",
+            itens: [
+              { href: r("/campanhas"), rotulo: "Campanhas", icone: "campanhas" as const },
+              { href: r("/publicos"), rotulo: "Públicos", icone: "publicos" as const },
+              { href: r("/rastreio"), rotulo: "Rastreio", icone: "rastreio" as const },
+              { href: r("/configuracoes"), rotulo: "Configurações", icone: "configuracoes" as const, tambem: [r("/sincronizacoes"), r("/configurar")] },
+            ],
+          },
+        ]
+      : []),
+    ...(admin ? [{ itens: [{ href: "/admin", rotulo: "Administração", icone: "admin" as const }] }] : []),
   ];
   // O cartão da organização leva à lista de organizações (troca de organização).
   const cartaoOrg = (compacto: boolean) => (
@@ -52,7 +66,7 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
       <aside className="sticky top-0 hidden h-screen w-[252px] flex-none flex-col gap-[22px] bg-chrome px-3.5 pb-4 pt-[22px] text-chrome-ink min-[960px]:flex">
         <img src="/marca/adverdad-logo-dark.png" alt="Adverdad" className="ml-2 h-[30px] w-auto self-start" />
         {cartaoOrg(false)}
-        <Navegacao itens={itens} />
+        <Navegacao secoes={secoes} />
         <div className="flex flex-col gap-2 border-t border-chrome-2 pt-3.5">
           <span className="truncate px-1 text-xs text-chrome-ink-2">{usuario.email}</span>
           <div className="flex items-center gap-1.5">
@@ -77,7 +91,7 @@ export default async function LayoutOrganizacao({ children, params }: LayoutProp
               <button className="min-h-11 px-2 font-medium text-chrome-ink">Sair</button>
             </form>
           </div>
-          <Navegacao itens={itens} modo="abas" />
+          <Navegacao secoes={secoes} modo="abas" />
         </header>
         <main className="mx-auto w-full max-w-[1320px] flex-1 px-[clamp(16px,3vw,36px)] py-6 sm:py-8">{children}</main>
       </div>

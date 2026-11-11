@@ -57,6 +57,13 @@ export const exigirOrganizacao = cache(async (slug: string, minimo: Papel = "lei
   return { usuario, org, papel: papel as Papel, supabase };
 });
 
+/** Área Gerenciar: quem só tem leitura volta para o Resumo (Analisar) em vez de ver telas que não pode usar. */
+export async function exigirGestao(slug: string) {
+  const acesso = await exigirOrganizacao(slug);
+  if (!temPapel(acesso.papel, "gestor")) redirect(`/o/${slug}`);
+  return acesso;
+}
+
 /** Para server actions: devolve erro em vez de redirecionar. */
 export async function acessoOrganizacao(orgId: string, minimo: Papel) {
   const supabase = await criarClienteServidor();
