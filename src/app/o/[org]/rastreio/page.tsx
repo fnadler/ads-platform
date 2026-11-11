@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Copiavel, Formulario } from "@/components/Formulario";
 import { Aviso, Cartao, Etiqueta, Tabela, Titulo, Vazio, type Tom } from "@/components/ui";
 import { exigirGestao, temPapel } from "@/lib/auth/sessao";
+import { ROTULO_VEICULACAO } from "@/lib/campanhas/veiculacao";
 import { dataHora } from "@/lib/formato";
 import { iniciarVerificacao, relerAnuncios, verificarAgora } from "@/lib/rastreio/acoes";
 import { avaliarDestino, avaliarParametros, PARAMETROS_META, type ResultadoCampo } from "@/lib/rastreio/regras";
@@ -11,18 +12,6 @@ export const metadata: Metadata = { title: "Rastreio" };
 
 const TOM_STATUS: Record<string, Tom> = { ok: "ok", alerta: "alerta", erro: "erro" };
 const ROTULO_STATUS: Record<string, string> = { ok: "OK", alerta: "Atenção", erro: "Sem rastreio" };
-const VEICULACAO: Record<string, string> = {
-  ACTIVE: "Ativo",
-  PAUSED: "Pausado",
-  CAMPAIGN_PAUSED: "Campanha pausada",
-  ADSET_PAUSED: "Conjunto pausado",
-  PENDING_REVIEW: "Em análise",
-  IN_PROCESS: "Processando",
-  WITH_ISSUES: "Com problemas",
-  DISAPPROVED: "Reprovado",
-  PREAPPROVED: "Pré-aprovado",
-  EXPIRED: "Concluído",
-};
 
 export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio">) {
   const { org: slug } = await params;
@@ -100,7 +89,7 @@ export default async function Rastreio({ params }: PageProps<"/o/[org]/rastreio"
                         {a.campaign_name} › {a.adset_name}
                       </div>
                     </td>
-                    <td className="whitespace-nowrap">{VEICULACAO[a.status ?? ""] ?? a.status}</td>
+                    <td className="whitespace-nowrap">{ROTULO_VEICULACAO[a.status ?? ""] ?? a.status}</td>
                     <td>
                       <Etiqueta tom={TOM_STATUS[a.status_rastreio]}>{ROTULO_STATUS[a.status_rastreio]}</Etiqueta>
                     </td>

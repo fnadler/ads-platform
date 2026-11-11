@@ -35,7 +35,7 @@ async function contexto(orgId: string, metaCampaignId: string) {
   if (campanha.status !== "ativa" && campanha.status !== "criada") throw new Error("A campanha ainda não terminou de ser criada na Meta.");
   const segredo = conexao ? await lerSegredo<SegredoMeta>(admin, orgId, conexao.id) : null;
   if (!segredo) throw new Error("Falta a conexão de publicação na Meta (Configurações → Meta (publicação)).");
-  const meta = new ClienteMetaEscrita({ token: segredo.token, admin, organizacaoId: orgId, campanhaId: campanha.id, usuarioId: usuario.id });
+  const meta = new ClienteMetaEscrita({ token: segredo.token, admin, organizacaoId: orgId, campanhaId: campanha.id, metaCampaignId: campanha.meta_campaign_id, usuarioId: usuario.id });
   return {
     usuario,
     supabase,

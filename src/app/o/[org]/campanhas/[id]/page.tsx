@@ -6,6 +6,7 @@ import { Formulario } from "@/components/Formulario";
 import { IconeExterno, IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Campo, Cartao, classeAreaTexto, corAnuncio, Etiqueta, MiniaturaCriativo, Selecao, Tabela, Titulo } from "@/components/ui";
 import { exigirGestao, temPapel } from "@/lib/auth/sessao";
+import { situacaoPelosAnuncios, veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
 import { dataHora, moeda } from "@/lib/formato";
 import { ativarCampanha, copiarTextosParaTodos, enviarParaMeta, excluirRascunho, removerCriativo, salvarCriativo, salvarRascunho, validarNaMeta } from "@/lib/publicacao/acoes";
 import { BUCKET_UPLOADS } from "@/lib/publicacao/job";
@@ -13,6 +14,8 @@ import { CHAMADAS, EVENTOS, validarRascunho, type ConfigPublicacao, type Criativ
 import { TIPOS_PUBLICO, type Publico } from "@/lib/publicos/modelo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { SITUACAO_CAMPANHA } from "../situacao";
+import { CartaoVeiculacao } from "../CartaoVeiculacao";
+import { CampanhaExterna } from "./CampanhaExterna";
 import { CamposOrcamento } from "./CamposOrcamento";
 import { EnviarArquivos } from "./EnviarArquivos";
 
@@ -28,6 +31,8 @@ const SITUACAO_CRIATIVO: Record<string, string> = {
 
 export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas/[id]">) {
   const { org: slug, id } = await params;
+  // Id da Meta: campanha criada no Gerenciador (ou montada aqui, que redireciona para o id interno).
+  if (/^\d+$/.test(id)) return <CampanhaExterna slug={slug} metaId={id} />;
   const { org, papel, supabase } = await exigirGestao(slug);
   const [{ data: c }, { data: criativos }, { data: config }, { data: operacoes }, { data: publicosOrg }, { data: conjuntos }] = await Promise.all([
     supabase.from("campanhas_assistente").select("*").eq("id", id).eq("organizacao_id", org.id).maybeSingle(),
@@ -38,6 +43,16 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
     supabase.from("conjuntos_assistente").select("id, nome, meta_adset_id").eq("campanha_id", id).order("ordem"),
   ]);
   if (!c) notFound();
+  // Depois da primeira ativação, a veiculação real (lida da Meta) é o que vale: no ar, pausada, encerrada.
+  const [{ data: lidos }, { data: publicacao }] =
+    c.status === "ativa" && c.meta_campaign_id
+      ? await Promise.all([
+          supabase.from("meta_anuncios").select("status").eq("organizacao_id", org.id).eq("campaign_id", c.meta_campaign_id),
+          supabase.from("conexoes").select("status").eq("organizacao_id", org.id).eq("tipo", "meta_publicacao").maybeSingle(),
+        ])
+      : [{ data: null }, { data: null }];
+  const statusLidos = (lidos ?? []).map((a) => a.status as string | null);
+  const situacao = statusLidos.length ? situacaoPelosAnuncios(statusLidos) : SITUACAO_CAMPANHA[c.status];
 
   const gestor = temPapel(papel, "gestor");
   // A campanha (verba, datas, público) só muda antes de o conjunto existir na Meta; cada criativo, até virar
@@ -88,7 +103,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
         }
         acoes={
           <div className="flex flex-wrap items-center gap-3">
-            <Etiqueta tom={SITUACAO_CAMPANHA[c.status].tom}>{SITUACAO_CAMPANHA[c.status].rotulo}</Etiqueta>
+            <Etiqueta tom={situacao.tom}>{situacao.rotulo}</Etiqueta>
             {c.meta_campaign_id && (
               <BotaoLink variante="secundario" href={rotaDesempenho(slug, c.meta_campaign_id)}>
                 Ver desempenho
@@ -148,6 +163,17 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
               )}
             </div>
           </Cartao>
+        )}
+        {c.status === "ativa" && c.meta_campaign_id && statusLidos.length > 0 && (
+          <CartaoVeiculacao
+            supabase={supabase}
+            orgId={org.id}
+            fuso={org.fuso}
+            metaCampaignId={c.meta_campaign_id}
+            veiculacao={veiculacaoPelosAnuncios(statusLidos)}
+            publicacaoAtiva={publicacao?.status === "ativa"}
+            rotaConfiguracoes={rotaOrg(slug, "/configuracoes")}
+          />
         )}
 
         {/* ── Rascunho ── */}

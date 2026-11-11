@@ -64,13 +64,9 @@ export default async function Campanhas({ params }: PageProps<"/o/[org]/campanha
                   return (
                     <tr key={c.assistenteId ?? c.metaId}>
                       <td>
-                        {c.assistenteId ? (
-                          <Link href={rotaOrg(slug, `/campanhas/${c.assistenteId}`)} className="font-medium text-ink hover:text-accent-text">
-                            {c.nome}
-                          </Link>
-                        ) : (
-                          <span className="font-medium text-ink">{c.nome}</span>
-                        )}
+                        <Link href={rotaOrg(slug, `/campanhas/${c.assistenteId ?? c.metaId}`)} className="font-medium text-ink hover:text-accent-text">
+                          {c.nome}
+                        </Link>
                         {c.criadaEm && <div className="text-xs text-ink-3">Criada em {dataHora(c.criadaEm, org.fuso)}</div>}
                       </td>
                       <td>

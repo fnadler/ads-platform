@@ -371,7 +371,7 @@ export async function ativarCampanha(_: Resultado, dados: FormData): Promise<Res
     const segredo = conexao.data ? await lerSegredo<SegredoMeta>(admin, orgId, conexao.data.id) : null;
     if (!segredo) return { erro: "Conexão de publicação ausente." };
     await admin.from("campanhas_assistente").update({ status: "ativando", atualizado_em: agoraIso() }).eq("id", id);
-    const meta = new ClienteMetaEscrita({ token: segredo.token, admin, organizacaoId: orgId, campanhaId: id, usuarioId: usuario.id });
+    const meta = new ClienteMetaEscrita({ token: segredo.token, admin, organizacaoId: orgId, campanhaId: id, metaCampaignId: c.meta_campaign_id, usuarioId: usuario.id });
     try {
       for (const a of anuncios ?? []) await meta.ativar(a.meta_ad_id!);
       for (const cj of conjuntos ?? []) await meta.ativar(cj.meta_adset_id!);

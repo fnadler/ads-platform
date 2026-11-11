@@ -4,7 +4,8 @@ import { ErroLimiteMeta, ErroMeta } from "./meta";
 
 // Escrita na Marketing API (assistente de campanhas). Cria objetos novos e, nos que o próprio sistema
 // criou, ativa, pausa e muda a verba — quem chama confere antes que o objeto é da plataforma (está nas
-// tabelas do assistente). Nada de apagar, nem de mexer no que foi criado fora dela. Toda chamada de
+// tabelas do assistente). Fora dela, só pausar e reativar a campanha inteira (Gerenciar › Campanhas),
+// em campanha que a leitura da conta da organização trouxe. Nada de apagar. Toda chamada de
 // escrita é registrada em operacoes_meta (sem o token). Erros da Meta viram ErroMeta com a mensagem
 // para o usuário (error_user_title/error_user_msg) quando ela vem.
 
@@ -54,6 +55,8 @@ export interface ContextoEscrita {
   admin: SupabaseClient;
   organizacaoId: string;
   campanhaId?: string | null;
+  /** Id da campanha na Meta, para o histórico da campanha (inclusive das criadas no Gerenciador). */
+  metaCampaignId?: string | null;
   usuarioId?: string | null;
 }
 
@@ -77,6 +80,7 @@ export class ClienteMetaEscrita {
       await this.ctx.admin.from("operacoes_meta").insert({
         organizacao_id: this.ctx.organizacaoId,
         campanha_id: this.ctx.campanhaId ?? null,
+        meta_campaign_id: this.ctx.metaCampaignId ?? null,
         usuario_id: this.ctx.usuarioId ?? null,
         metodo: "POST",
         caminho,
