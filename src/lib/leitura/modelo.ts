@@ -12,7 +12,7 @@
 // um número em destaque e uma ação curta) e o detalhe (a explicação, as etapas do funil e a ação
 // completa), que a tela mostra só quando a pessoa pede.
 
-import { zProporcoes, zTaxas, probNenhum, significativo } from "./estatistica";
+import { zProporcoes, zTaxas, probAteK, probNenhum, significativo } from "./estatistica";
 import { moeda, pct, decimal, inteiro } from "@/lib/formato";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import type { Efeito, Marco } from "./marcos";
@@ -75,6 +75,8 @@ export interface EntradaLeitura {
   marcos?: MarcoComEfeito[];
   /** Sessões por navegador nos últimos 7 dias (Clarity, total do site). */
   navegadores?: Array<{ nome: string; sessoes: number }>;
+  /** Metas da campanha: custo aceito por cadastro e por venda (nulo = sem meta). */
+  metas?: { cadastro: number | null; venda: number | null };
 }
 
 export type MarcoComEfeito = Marco & { efeito: Efeito };
@@ -569,9 +571,10 @@ function regraQualidade(e: EntradaLeitura): Achado[] {
           area: "anuncios",
           titulo: `“${a.nome}” traz cadastros que não testam`,
           destaque: { para: `0 de ${inteiro(a.leads)}`, rotulo: "cadastros começaram o teste grátis", sentido: "pior" },
-          acao: chance < 0.05 ? "Reduza a verba desse anúncio ou mude a promessa." : "Acompanhe mais alguns cadastros.",
+          acao: chance < 0.05 ? "Confira se a tela depois do cadastro continua a promessa do anúncio." : "Acompanhe mais alguns cadastros.",
           detalhe: `Na campanha, ${pct(p, 0)} dos cadastros começam o teste grátis; nesse anúncio, nenhum. O esperado seriam ${decimal(a.leads * p, 1)}. A chance de ser só acaso é de ${pct(chance, 0)}.`,
-          acaoDetalhe: chance < 0.05 ? "Ele atrai gente que se cadastra sem intenção de usar." : undefined,
+          acaoDetalhe:
+            "Ou ele atrai gente que se cadastra sem intenção de usar, ou a pessoa não encontra depois do cadastro o que o anúncio prometeu. Faça o cadastro pelo anúncio e veja a primeira tela: se o anúncio fala de uma coisa (ex.: vender) e a tela abre em outra (ex.: colecionar), aponte o destino desse anúncio para a parte do site que continua a promessa dele. Se a tela já continua a promessa, reduza a verba ou pause o anúncio.",
           acaoExecutavel: chance < 0.05 ? { tipo: "pausar_anuncio" as const, anuncio: a.ad_id } : undefined,
         } satisfies Achado,
       ];
@@ -800,6 +803,110 @@ function regraClarity(e: EntradaLeitura): Achado | null {
   };
 }
 
+// ───────────────────────────── Metas ─────────────────────────────
+
+/** Mínimo de dias com gasto antes de comparar com a meta: o começo da campanha é caro e instável. */
+export const DIAS_MINIMOS_META = 5;
+
+/**
+ * Custo real × meta da pessoa. Só fala depois de 5 dias com gasto e de volume suficiente (o esperado na meta),
+ * e separa "acima da meta" de "acima, mas pode ser acaso" com a chance de vir tão pouco resultado se a meta
+ * estivesse sendo cumprida (Poisson).
+ *  • Cadastro: os últimos 7 dias completos com gasto, contando os cadastros que chegaram ao sistema.
+ *  • Venda: o gasto que já teve tempo de virar venda (no teste grátis, até o fim do teste) sobre as vendas.
+ */
+function regraMetas(e: EntradaLeitura, completos: DiaCampanha[]): Achado[] {
+  const metas = e.metas;
+  if (!metas) return [];
+  const comGasto = completos.filter((d) => d.gasto > 0);
+  if (comGasto.length < DIAS_MINIMOS_META) return [];
+  const achados: Achado[] = [];
+  const m = (v: number) => moeda(v, e.moeda);
+
+  if (metas.cadastro && e.funil !== "venda_direta") {
+    const rec = comGasto.slice(-7);
+    const gasto = rec.reduce((s, d) => s + d.gasto, 0);
+    const leads = rec.reduce((s, d) => s + d.leads, 0);
+    const esperado = gasto / metas.cadastro;
+    if (esperado >= 10) {
+      const custo = leads ? gasto / leads : null;
+      const periodoTxt = `nos últimos ${rec.length} dias`;
+      if (custo !== null && custo <= metas.cadastro) {
+        achados.push({
+          id: "meta-cadastro",
+          tom: "ok",
+          area: "geral",
+          titulo: "O cadastro está dentro da sua meta",
+          destaque: { para: m(custo), rotulo: `por cadastro ${periodoTxt} (meta: ${m(metas.cadastro)})`, sentido: "melhor" },
+          detalhe: `${periodoTxt[0].toUpperCase()}${periodoTxt.slice(1)}, foram ${m(gasto)} e ${plural(leads, "cadastro", "cadastros")} que chegaram ao seu sistema.`,
+        });
+      } else {
+        const chance = probAteK(leads, esperado);
+        const caros = e.anuncios
+          .filter((a) => a.gasto >= metas.cadastro! * 3 && (a.leads ? a.gasto / a.leads : Infinity) > metas.cadastro! * 1.2)
+          .sort((a, b) => b.gasto - a.gasto)
+          .slice(0, 2)
+          .map((a) => `“${a.nome}” (${a.leads ? m(a.gasto / a.leads) : `${m(a.gasto)} sem cadastro`})`);
+        achados.push({
+          id: "meta-cadastro",
+          tom: chance < 0.05 ? "agir" : "observar",
+          area: "geral",
+          titulo: custo
+            ? `Depois de ${plural(comGasto.length, "dia", "dias")}, o cadastro está custando ${m(custo)}, acima dos ${m(metas.cadastro)} da sua meta`
+            : `${m(gasto)} investidos ${periodoTxt} e nenhum cadastro`,
+          destaque: custo ? { de: m(metas.cadastro), para: m(custo), rotulo: `por cadastro ${periodoTxt} (meta → real)`, sentido: "pior" } : undefined,
+          acao: chance < 0.05 ? "Veja quais anúncios puxam o custo para cima e onde o caminho até o cadastro perde gente." : "Acompanhe mais alguns dias antes de mexer.",
+          detalhe: `Na sua meta, ${m(gasto)} trariam cerca de ${inteiro(esperado)} cadastros; vieram ${inteiro(leads)}. ${
+            chance < 0.05 ? `A chance de ser só acaso é de ${pct(chance, 0)}.` : `Com esse volume, ainda pode ser variação (chance de acaso: ${pct(chance, 0)}).`
+          }${caros.length ? ` Na campanha, os mais caros por cadastro são ${juntarE(caros)}.` : ""} Conta os cadastros que chegaram ao seu sistema, não os que a Meta conta.`,
+          acaoDetalhe:
+            "Os outros achados apontam a etapa: anúncio (poucos cliques), página (muita visita e pouco cadastro) ou anúncios específicos. Se nada mudou e o custo segue acima, a meta pode estar abaixo do que esse público custa: compare com o custo por venda antes de cortar.",
+        });
+      }
+    }
+  }
+
+  if (metas.venda) {
+    // No teste grátis, só o gasto de quem já teve tempo de pagar (o teste terminou) entra na conta.
+    const espera = e.funil === "cadastro_teste_venda" ? e.diasTeste + 1 : 0;
+    const limite = somaDias(e.hoje, -espera);
+    const maduros = comGasto.filter((d) => d.dia < limite);
+    const gasto = maduros.reduce((s, d) => s + d.gasto, 0);
+    const esperado = gasto / metas.venda;
+    const unidade = e.funil === "cadastro_teste_venda" ? ["assinante", "assinantes"] : ["venda", "vendas"];
+    if (maduros.length >= DIAS_MINIMOS_META && esperado >= 3) {
+      const custo = e.vendas ? gasto / e.vendas : null;
+      const abertos = e.funil === "cadastro_teste_venda" && e.testesAtivos.length ? ` Ainda há ${plural(e.testesAtivos.length, "teste grátis", "testes grátis")} em andamento, que podem baixar esse custo.` : "";
+      if (custo !== null && custo <= metas.venda) {
+        achados.push({
+          id: "meta-venda",
+          tom: "ok",
+          area: "vendas",
+          titulo: `O custo por ${unidade[0]} está dentro da sua meta`,
+          destaque: { para: m(custo), rotulo: `por ${unidade[0]} (meta: ${m(metas.venda)})`, sentido: "melhor" },
+          detalhe: `${m(gasto)} investidos e ${plural(e.vendas, unidade[0], unidade[1])}.`,
+        });
+      } else {
+        const chance = probAteK(e.vendas, esperado);
+        achados.push({
+          id: "meta-venda",
+          tom: chance < 0.05 && !abertos ? "agir" : "observar",
+          area: "vendas",
+          titulo: custo ? `Cada ${unidade[0]} está custando ${m(custo)}, acima dos ${m(metas.venda)} da sua meta` : `${m(gasto)} investidos e nenhum ${unidade[0]}`,
+          destaque: custo ? { de: m(metas.venda), para: m(custo), rotulo: `por ${unidade[0]} (meta → real)`, sentido: "pior" } : undefined,
+          acao: "Concentre a verba nos anúncios que vendem; o cadastro barato não basta.",
+          detalhe: `Na sua meta, ${m(gasto)} trariam cerca de ${decimal(esperado, 1)} ${unidade[1]}; ${e.vendas ? `vieram ${inteiro(e.vendas)}` : "não veio nenhum"}.${
+            espera ? ` Conta o gasto até ${ddmm(somaDias(limite, -1))}, de quem já passou pelos ${e.diasTeste} dias de teste.` : ""
+          }${abertos} ${chance < 0.05 ? `A chance de ser só acaso é de ${pct(chance, 0)}.` : `Com esse volume, ainda pode ser variação (chance de acaso: ${pct(chance, 0)}).`}`,
+          acaoDetalhe:
+            "Veja na aba Anúncios quais trazem venda (não só cadastro) e no caminho do cadastro até o pagamento onde as pessoas param. Se a meta vale para o primeiro pagamento de uma assinatura, compare também com o payback: um assinante que fica vários meses pode valer um custo maior.",
+        });
+      }
+    }
+  }
+  return achados;
+}
+
 // ───────────────────────────── Leitura ─────────────────────────────
 
 export function lerCampanha(e: EntradaLeitura): Leitura {
@@ -816,6 +923,7 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
     regraSaturacao(completos),
     rastreio,
     rastreio ? null : regraDiferencaMeta(e, completos),
+    ...regraMetas(e, completos),
     regraTestesRecentes(e),
     regraVencedorVenda(e),
     ...regraQualidade(e),

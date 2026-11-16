@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { caminho } from "@/lib/clarity/campanha";
+import { carregarMetas } from "@/lib/campanhas/metas";
 import { efeitoDoMarco, marcosDeOperacoes, marcosDePagina, type GastoAnuncioDia, type OperacaoMeta, type TestePagina } from "./marcos";
 import { lerCampanha, type AnuncioResumo, type DiaCampanha, type DiaClarity, type Leitura } from "./modelo";
 
@@ -48,7 +49,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
   const inicio = new Date(Date.now() - JANELA_DIAS * 86_400_000).toISOString();
   const deDia = diaNoFuso(inicio, org.fuso);
 
-  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }, { data: pagas }] = await Promise.all([
+  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }, { data: pagas }, metas] = await Promise.all([
     supabase
       .from("meta_campanha_dia")
       .select("dia, gasto, impressoes, frequencia, cliques_link, visualizacoes_pagina, leads, sincronizado_em")
@@ -84,6 +85,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name, titulo, texto, status, destinos").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
     // Vendas pagas ligadas a cada anúncio (o anúncio da venda, ou o do cadastro de origem).
     supabase.from("vendas_atribuidas").select("ad_id").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).eq("tipo", "pagamento").gte("ocorrida_em", inicio),
+    carregarMetas(supabase, org.id, campanhaId),
   ]);
 
   // Mídia por dia (somando contas) + leads e testes pelo dia do cadastro.
@@ -204,6 +206,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     clarity,
     marcos,
     navegadores: [...porNavegador].map(([nome, sessoes]) => ({ nome, sessoes })),
+    metas,
   });
 }
 

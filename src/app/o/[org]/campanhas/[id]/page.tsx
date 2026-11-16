@@ -6,6 +6,7 @@ import { Formulario } from "@/components/Formulario";
 import { IconeExterno, IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Campo, Cartao, classeAreaTexto, corAnuncio, Etiqueta, MiniaturaCriativo, Selecao, Tabela, Titulo } from "@/components/ui";
 import { exigirGestao, temPapel } from "@/lib/auth/sessao";
+import { carregarMetas } from "@/lib/campanhas/metas";
 import { situacaoPelosAnuncios, veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
 import { dataHora, moeda } from "@/lib/formato";
 import { ativarCampanha, copiarTextosParaTodos, enviarParaMeta, excluirRascunho, removerCriativo, salvarCriativo, salvarRascunho, validarNaMeta } from "@/lib/publicacao/acoes";
@@ -14,6 +15,7 @@ import { CHAMADAS, EVENTOS, validarRascunho, type ConfigPublicacao, type Criativ
 import { TIPOS_PUBLICO, type Publico } from "@/lib/publicos/modelo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import { SITUACAO_CAMPANHA } from "../situacao";
+import { CartaoMetas } from "../CartaoMetas";
 import { CartaoVeiculacao } from "../CartaoVeiculacao";
 import { CampanhaExterna } from "./CampanhaExterna";
 import { CamposOrcamento } from "./CamposOrcamento";
@@ -51,6 +53,8 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
           supabase.from("conexoes").select("status").eq("organizacao_id", org.id).eq("tipo", "meta_publicacao").maybeSingle(),
         ])
       : [{ data: null }, { data: null }];
+  // Na Meta, as metas passam para Gerenciar (valem também para campanhas do Gerenciador).
+  const metas = c.meta_campaign_id && temPapel(papel, "gestor") ? await carregarMetas(supabase, org.id, c.meta_campaign_id) : null;
   const statusLidos = (lidos ?? []).map((a) => a.status as string | null);
   const situacao = statusLidos.length ? situacaoPelosAnuncios(statusLidos) : SITUACAO_CAMPANHA[c.status];
 
@@ -177,6 +181,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
             rotaBalanco={`${rotaDesempenho(slug, c.meta_campaign_id)}?aba=balanco`}
           />
         )}
+        {metas && c.meta_campaign_id && <CartaoMetas orgId={org.id} metaCampaignId={c.meta_campaign_id} metas={metas} funil={org.funil} moeda={org.moeda} />}
 
         {/* ── Rascunho ── */}
         <Cartao titulo="1. Campanha" descricao="Objetivo Cadastros, destino site, atribuição 7 dias clique / 1 dia visualização e Parâmetros de URL: definidos pelo sistema.">
@@ -261,6 +266,22 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                   <span className="text-xs text-ink-3">Ex.: excluir os pagantes para não gastar verba com quem já é cliente.</span>
                 </fieldset>
               )}
+              <fieldset className="grid gap-3 text-sm sm:col-span-2 sm:grid-cols-2">
+                <legend className="mb-1 font-[550]">Metas (opcional)</legend>
+                <p className="text-xs text-ink-3 sm:col-span-2">
+                  Quanto você aceita pagar por resultado. Depois de 5 dias no ar, a leitura da campanha avisa se o custo passou da meta. Dá para mudar depois, em Gerenciar.
+                </p>
+                {org.funil !== "venda_direta" && (
+                  <Campo rotulo="Custo por cadastro" name="meta_cadastro" inputMode="decimal" defaultValue={Number(r.meta_cadastro) || ""} placeholder="Ex.: 3,00" />
+                )}
+                <Campo
+                  rotulo={org.funil === "cadastro_teste_venda" ? "Custo por assinante" : "Custo por venda"}
+                  name="meta_venda"
+                  inputMode="decimal"
+                  defaultValue={Number(r.meta_venda) || ""}
+                  placeholder="Ex.: 60,00"
+                />
+              </fieldset>
               <details className="sm:col-span-2" open={!publicos.length}>
                 <summary className="flex min-h-10 cursor-pointer items-center text-sm font-[550] text-accent-text">Público rápido (quando nenhum público salvo é marcado)</summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -297,6 +318,19 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                 <dt className="text-ink-2">Destino</dt>
                 <dd className="truncate">{String(r.url_destino)}</dd>
               </div>
+              {(Number(r.meta_cadastro) > 0 || Number(r.meta_venda) > 0) && !c.meta_campaign_id && (
+                <div>
+                  <dt className="text-ink-2">Metas</dt>
+                  <dd>
+                    {[
+                      Number(r.meta_cadastro) > 0 && `${moeda(Number(r.meta_cadastro), org.moeda)} por cadastro`,
+                      Number(r.meta_venda) > 0 && `${moeda(Number(r.meta_venda), org.moeda)} por ${org.funil === "cadastro_teste_venda" ? "assinante" : "venda"}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-ink-2">Público</dt>
                 <dd>
@@ -347,6 +381,14 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                           ))}
                         </Selecao>
                       </div>
+                      <Campo
+                        rotulo="Página de destino deste anúncio (opcional)"
+                        name="url_destino"
+                        type="url"
+                        defaultValue={x.url_destino ?? ""}
+                        placeholder={String(r.url_destino || "https://")}
+                        ajuda="Em branco, usa a da campanha. Use quando o anúncio fala de algo específico: a pessoa cai direto na parte do site que continua a promessa dele (ex.: ?para=vender)."
+                      />
                     </Formulario>
                     <div className="flex flex-wrap gap-2">
                       {lista.length > 1 && (
@@ -373,6 +415,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
                     <p className="mt-1">
                       <strong>{x.titulo}</strong> · {CHAMADAS[x.chamada as keyof typeof CHAMADAS] ?? x.chamada}
                     </p>
+                    {x.url_destino && <p className="mt-1 truncate text-xs text-ink-3">Destino: {x.url_destino}</p>}
                   </div>
                 )}
               </div>

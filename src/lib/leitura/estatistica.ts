@@ -21,3 +21,15 @@ export const probNenhum = (n: number, p: number) => (p <= 0 ? 1 : Math.pow(1 - M
 
 /** |z| ≥ 1,96: diferença improvável de ser só ruído (≈95%). */
 export const significativo = (z: number) => Math.abs(z) >= 1.96;
+
+/** P(X ≤ k) com X ~ Poisson(λ): a chance de vir tão pouco (ou menos) quando o esperado era λ. */
+export function probAteK(k: number, lambda: number): number {
+  if (lambda <= 0) return 1;
+  let termo = Math.exp(-lambda);
+  let soma = termo;
+  for (let i = 1; i <= k; i++) {
+    termo *= lambda / i;
+    soma += termo;
+  }
+  return Math.min(soma, 1);
+}

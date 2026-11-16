@@ -4,9 +4,11 @@ import { IconeExterno, IconeSeta, IconeVoltar } from "@/components/Icones";
 import { Aviso, BotaoLink, Cartao, Etiqueta, Tabela, Titulo } from "@/components/ui";
 import { exigirGestao } from "@/lib/auth/sessao";
 import { linkGerenciador } from "@/lib/campanhas/lista";
+import { carregarMetas } from "@/lib/campanhas/metas";
 import { ROTULO_VEICULACAO, situacaoPelosAnuncios, veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
 import { carregarRastreio, rotuloSaude } from "@/lib/rastreio/situacao";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
+import { CartaoMetas } from "../CartaoMetas";
 import { CartaoVeiculacao } from "../CartaoVeiculacao";
 
 // Gerenciar › campanha criada no Gerenciador de Anúncios (endereço pelo id da Meta). Aqui só se pausa e
@@ -30,7 +32,7 @@ export async function CampanhaExterna({ slug, metaId }: { slug: string; metaId: 
   if (!anuncios?.length) notFound();
 
   const status = anuncios.map((a) => a.status);
-  const rastreio = (await carregarRastreio(supabase, org.id, metaId)).campanhas[0];
+  const [{ campanhas: [rastreio] }, metas] = await Promise.all([carregarRastreio(supabase, org.id, metaId), carregarMetas(supabase, org.id, metaId)]);
   const saude = rastreio ? rotuloSaude(rastreio) : null;
   const situacao = situacaoPelosAnuncios(status);
   const gerenciador = linkGerenciador(anuncios[0].account_id, metaId);
@@ -81,8 +83,10 @@ export async function CampanhaExterna({ slug, metaId }: { slug: string; metaId: 
           veiculacao={veiculacaoPelosAnuncios(status)}
           publicacaoAtiva={conexao?.status === "ativa"}
           rotaConfiguracoes={rotaOrg(slug, "/configuracoes")}
-            rotaBalanco={`${rotaDesempenho(slug, metaId)}?aba=balanco`}
+          rotaBalanco={`${rotaDesempenho(slug, metaId)}?aba=balanco`}
         />
+
+        <CartaoMetas orgId={org.id} metaCampaignId={metaId} metas={metas} funil={org.funil} moeda={org.moeda} />
 
         <Cartao titulo="Conjuntos e anúncios" descricao="Como a última leitura da Meta encontrou cada anúncio." rente>
           <Tabela>

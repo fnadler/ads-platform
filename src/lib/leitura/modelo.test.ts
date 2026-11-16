@@ -310,4 +310,38 @@ describe("lerCampanha — achados da fase 2 (caso GN, campanha toda)", () => {
     const dividido = porId({ ...GN_FIM, anuncios: GN_FIM.anuncios.map((x) => ({ ...x, vendas: x.ad_id === "b" ? 3 : x.ad_id === "d" ? 3 : 0 })) });
     expect(Object.keys(dividido).some((k) => k.startsWith("vencedor"))).toBe(false);
   });
+
+  // Fase 5: metas. Últimos 7 dias (09–15/11): R$ 311,09 e 79 cadastros → R$ 3,94 por cadastro.
+  it("meta de cadastro: acima da meta com volume vira agir, com o custo real", () => {
+    const m = porId({ ...GN_FIM, metas: { cadastro: 3, venda: null } })["meta-cadastro"];
+    expect(m?.tom).toBe("agir");
+    expect(m?.titulo.replace(/\u00a0/g, " ")).toBe("Depois de 15 dias, o cadastro está custando R$ 3,94, acima dos R$ 3,00 da sua meta");
+    expect(m?.detalhe).toContain("vieram 79");
+  });
+
+  it("meta de cadastro: perto da meta é observar; abaixo é ok", () => {
+    expect(porId({ ...GN_FIM, metas: { cadastro: 3.8, venda: null } })["meta-cadastro"]?.tom).toBe("observar");
+    expect(porId({ ...GN_FIM, metas: { cadastro: 4.5, venda: null } })["meta-cadastro"]?.tom).toBe("ok");
+  });
+
+  it("meta de cadastro: espera 5 dias com gasto e volume", () => {
+    expect(porId({ ...GN_FIM, dias: dias.slice(0, 4), hoje: "2026-11-05", metas: { cadastro: 3, venda: null } })["meta-cadastro"]).toBeUndefined();
+    // Meta alta demais para o gasto: o esperado não chega a 10 cadastros.
+    expect(porId({ ...GN_FIM, metas: { cadastro: 40, venda: null } })["meta-cadastro"]).toBeUndefined();
+  });
+
+  it("meta de assinante: só conta o gasto de quem já passou pelo teste grátis", () => {
+    // 01–07/11: R$ 341,05 e as 6 assinaturas → R$ 56,84 por assinante.
+    const m = porId({ ...GN_FIM, vendas: 6, metas: { cadastro: null, venda: 30 } })["meta-venda"];
+    expect(m?.detalhe).toContain("Conta o gasto até 07/11");
+    expect(m?.titulo.replace(/\u00a0/g, " ")).toBe("Cada assinante está custando R$ 56,84, acima dos R$ 30,00 da sua meta");
+    // Com testes em andamento, não passa de observar.
+    expect(m?.tom).toBe("observar");
+    expect(porId({ ...GN_FIM, vendas: 6, metas: { cadastro: null, venda: 60 } })["meta-venda"]?.tom).toBe("ok");
+    expect(porId({ ...GN_FIM, vendas: 0, metas: { cadastro: null, venda: 30 } })["meta-venda"]?.titulo.replace(/\u00a0/g, " ")).toBe("R$ 341,05 investidos e nenhum assinante");
+  });
+
+  it("sem meta, nenhum achado de meta", () => {
+    expect(Object.keys(porId(GN_FIM)).some((k) => k.startsWith("meta-"))).toBe(false);
+  });
 });

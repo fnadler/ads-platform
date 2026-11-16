@@ -78,3 +78,43 @@ export async function reativarCampanha(_: Resultado, dados: FormData): Promise<R
     return { erro: mensagem(e) };
   }
 }
+
+// ───────────────────────────── Metas ─────────────────────────────
+
+/**
+ * Metas da campanha (custo por cadastro e por venda que a pessoa aceita). Valem para as duas origens; em
+ * branco, apaga a meta. A leitura da campanha passa a comparar o custo real com elas.
+ */
+export async function salvarMetas(_: Resultado, dados: FormData): Promise<Resultado> {
+  const orgId = String(dados.get("organizacao_id"));
+  const metaCampaignId = String(dados.get("campanha"));
+  if (!/^\d+$/.test(metaCampaignId)) return { erro: "Campanha inválida." };
+  const valor = (k: string) => {
+    const bruto = String(dados.get(k) ?? "").trim();
+    if (!bruto) return null;
+    const v = Number(bruto.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : NaN;
+  };
+  const custoCadastro = valor("custo_cadastro");
+  const custoVenda = valor("custo_venda");
+  if (Number.isNaN(custoCadastro) || Number.isNaN(custoVenda)) return { erro: "Use valores maiores que zero, como 3,50." };
+  try {
+    const { usuario, supabase } = await acessoOrganizacao(orgId, "gestor");
+    const { error } =
+      custoCadastro === null && custoVenda === null
+        ? await supabase.from("metas_campanha").delete().eq("organizacao_id", orgId).eq("meta_campaign_id", metaCampaignId)
+        : await supabase.from("metas_campanha").upsert({
+            organizacao_id: orgId,
+            meta_campaign_id: metaCampaignId,
+            custo_cadastro: custoCadastro,
+            custo_venda: custoVenda,
+            atualizado_por: usuario.id,
+            atualizado_em: new Date().toISOString(),
+          });
+    if (error) return { erro: error.message };
+    refresh();
+    return { mensagem: custoCadastro === null && custoVenda === null ? "Metas removidas." : "Metas salvas. A leitura da campanha passa a compará-las com o custo real." };
+  } catch (e) {
+    return { erro: mensagem(e) };
+  }
+}

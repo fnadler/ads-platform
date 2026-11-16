@@ -49,6 +49,9 @@ export const Rascunho = z.object({
   // Públicos personalizados excluídos de todos os conjuntos (ex.: pagantes).
   excluir: z.array(z.uuid()).max(5).default([]),
   url_destino: z.url("Informe a página de destino (https://…)."),
+  // Metas (opcionais): quanto a pessoa aceita pagar por cadastro e por venda. A leitura avisa quando passa.
+  meta_cadastro: z.coerce.number().nonnegative().default(0),
+  meta_venda: z.coerce.number().nonnegative().default(0),
 });
 export type Rascunho = z.infer<typeof Rascunho>;
 
@@ -59,6 +62,23 @@ export interface CriativoRascunho {
   texto: string;
   titulo: string;
   chamada: string;
+  /** Página de destino só deste anúncio. Em branco, vale a da campanha. */
+  url_destino?: string | null;
+}
+
+/** Destino do anúncio: o próprio, quando definido, ou o da campanha. */
+export const destinoDoCriativo = (c: Pick<CriativoRascunho, "url_destino">, r: Pick<Rascunho, "url_destino">) => c.url_destino?.trim() || r.url_destino;
+
+/** O que há de errado num destino (https, sem utm_), ou null. */
+export function problemaDestino(url: string): string | null {
+  if (!url.startsWith("https://")) return "precisa começar com https://";
+  try {
+    new URL(url);
+  } catch {
+    return "não é um endereço válido";
+  }
+  if (/[?&]utm_/.test(url)) return "tire os utm_: o sistema acrescenta os Parâmetros de URL sozinho";
+  return null;
 }
 
 export interface ConfigPublicacao {
@@ -164,6 +184,9 @@ export function validarRascunho(
     if (!(c.chamada in CHAMADAS)) problemas.push({ campo: `criativo:${c.id}`, texto: `“${c.nome}”: escolha o botão.` });
     if (nomes.has(c.nome.trim().toLowerCase())) problemas.push({ campo: `criativo:${c.id}`, texto: `Dois criativos com o nome “${c.nome}”: o painel separa os anúncios pelo nome.` });
     nomes.add(c.nome.trim().toLowerCase());
+    const destino = c.url_destino?.trim();
+    const erroDestino = destino ? problemaDestino(destino) : null;
+    if (erroDestino) problemas.push({ campo: `criativo:${c.id}`, texto: `“${c.nome}”: a página de destino ${erroDestino}.` });
   }
   return { rascunho: r, problemas };
 }
@@ -244,12 +267,13 @@ export interface MidiaMeta {
 }
 
 export function payloadCriativo(c: CriativoRascunho, r: Rascunho, config: ConfigPublicacao, midia: MidiaMeta) {
-  const chamada = { type: c.chamada, value: { link: r.url_destino } };
+  const link = destinoDoCriativo(c, r);
+  const chamada = { type: c.chamada, value: { link } };
   const identidade = { page_id: config.page_id, ...(config.instagram_user_id ? { instagram_user_id: config.instagram_user_id } : {}) };
   const objectStorySpec =
     c.tipo === "video"
       ? { ...identidade, video_data: { video_id: midia.video_id, image_url: midia.thumb_url, message: c.texto, title: c.titulo, call_to_action: chamada } }
-      : { ...identidade, link_data: { image_hash: midia.image_hash, link: r.url_destino, message: c.texto, name: c.titulo, call_to_action: chamada } };
+      : { ...identidade, link_data: { image_hash: midia.image_hash, link, message: c.texto, name: c.titulo, call_to_action: chamada } };
   return {
     name: c.nome,
     object_story_spec: objectStorySpec,

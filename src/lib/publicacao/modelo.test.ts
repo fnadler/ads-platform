@@ -78,6 +78,22 @@ describe("payloads", () => {
     expect(p.object_story_spec).not.toHaveProperty("instagram_user_id");
     expect(payloadAnuncio(criativo, "as1", "cr1")).toEqual({ name: "A1 | B gaveta", adset_id: "as1", creative: { creative_id: "cr1" }, status: "PAUSED" });
   });
+
+  it("criativo com destino próprio (caso GN: ?para=vender) usa o dele no link e no botão", () => {
+    const proprio = { ...criativo, url_destino: "https://www.exemplo.com.br/?para=vender" };
+    const v = payloadCriativo(proprio, r, config, { video_id: "v1", thumb_url: "https://t/1.jpg" });
+    expect(v.object_story_spec).toMatchObject({ video_data: { call_to_action: { value: { link: "https://www.exemplo.com.br/?para=vender" } } } });
+    const i = payloadCriativo({ ...proprio, tipo: "imagem" }, r, config, { image_hash: "h1" });
+    expect(i.object_story_spec).toEqual(expect.objectContaining({ link_data: expect.objectContaining({ link: "https://www.exemplo.com.br/?para=vender" }) }));
+    // Em branco, vale o da campanha.
+    const b = payloadCriativo({ ...criativo, url_destino: "  " }, r, config, { video_id: "v1" });
+    expect(b.object_story_spec).toMatchObject({ video_data: { call_to_action: { value: { link: "https://www.exemplo.com.br/" } } } });
+  });
+
+  it("destino próprio inválido ou com utm_ vira problema do criativo", () => {
+    const v = validarRascunho(bruto, [{ ...criativo, url_destino: "http://x.com" }, { ...criativo, id: "c2", nome: "A2", url_destino: "https://x.com/?utm_source=a" }], config, "America/Sao_Paulo", agora);
+    expect(v.problemas.map((p) => p.campo)).toEqual(["criativo:c1", "criativo:c2"]);
+  });
 });
 
 describe("orçamento total", () => {

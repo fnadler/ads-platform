@@ -11,7 +11,7 @@ import { ClienteMetaEscrita, lerPrerequisitos } from "@/lib/integracoes/metaEscr
 import { rotaOrg } from "@/lib/rotas";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { BUCKET_UPLOADS, carregarContextoPublicacao } from "./job";
-import { CHAMADAS, payloadCampanha, validarRascunho } from "./modelo";
+import { CHAMADAS, problemaDestino, payloadCampanha, validarRascunho } from "./modelo";
 
 // Ações do assistente de campanhas. Gestor monta e envia; o dono conecta a credencial de publicação e
 // define Página, Instagram, conjunto de dados e o teto de verba. Ativar (começar a gastar) pede confirmação.
@@ -181,6 +181,8 @@ export async function salvarRascunho(_: Resultado, dados: FormData): Promise<Res
       publicos: dados.getAll("publicos").map(String),
       excluir: dados.getAll("excluir").map(String),
       url_destino: String(dados.get("url_destino") ?? "").trim(),
+      meta_cadastro: numero("meta_cadastro"),
+      meta_venda: numero("meta_venda"),
     };
     const { error, count } = await supabase
       .from("campanhas_assistente")
@@ -241,6 +243,12 @@ const Criativo = z.object({
   texto: z.string().max(2000),
   titulo: z.string().max(255),
   chamada: z.enum(Object.keys(CHAMADAS) as [keyof typeof CHAMADAS, ...Array<keyof typeof CHAMADAS>]),
+  // Página só deste anúncio (em branco, vale a da campanha).
+  url_destino: z
+    .string()
+    .trim()
+    .default("")
+    .refine((u) => !u || !problemaDestino(u), { message: "A página de destino do anúncio precisa começar com https:// e não pode ter utm_." }),
 });
 
 export async function salvarCriativo(_: Resultado, dados: FormData): Promise<Resultado> {
@@ -250,7 +258,7 @@ export async function salvarCriativo(_: Resultado, dados: FormData): Promise<Res
     const { supabase } = await acessoOrganizacao(v.data.organizacao_id, "gestor");
     const { error, count } = await supabase
       .from("criativos_assistente")
-      .update({ nome: v.data.nome, texto: v.data.texto, titulo: v.data.titulo, chamada: v.data.chamada }, { count: "exact" })
+      .update({ nome: v.data.nome, texto: v.data.texto, titulo: v.data.titulo, chamada: v.data.chamada, url_destino: v.data.url_destino || null }, { count: "exact" })
       .eq("id", v.data.id)
       .eq("organizacao_id", v.data.organizacao_id);
     if (error) return { erro: error.message };
