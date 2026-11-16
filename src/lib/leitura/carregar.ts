@@ -47,7 +47,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
   const inicio = new Date(Date.now() - JANELA_DIAS * 86_400_000).toISOString();
   const deDia = diaNoFuso(inicio, org.fuso);
 
-  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }] = await Promise.all([
+  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }, { data: pagas }] = await Promise.all([
     supabase
       .from("meta_campanha_dia")
       .select("dia, gasto, impressoes, frequencia, cliques_link, visualizacoes_pagina, leads, sincronizado_em")
@@ -80,7 +80,9 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
       .eq("validacao", false)
       .gte("criado_em", inicio)
       .order("criado_em"),
-    supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
+    supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name, titulo, texto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
+    // Vendas pagas ligadas a cada anúncio (o anúncio da venda, ou o do cadastro de origem).
+    supabase.from("vendas_atribuidas").select("ad_id").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).eq("tipo", "pagamento").gte("ocorrida_em", inicio),
   ]);
 
   // Mídia por dia (somando contas) + leads e testes pelo dia do cadastro.
@@ -143,6 +145,24 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     efeito: efeitoDoMarco(m, gastos, resultados, hoje),
   }));
 
+  // Vendas, título e texto por anúncio (vencedor por venda e o roteiro das variações).
+  for (const v of pagas ?? []) if (v.ad_id) anuncio(v.ad_id).vendas = (anuncio(v.ad_id).vendas ?? 0) + 1;
+  for (const a of lidos ?? []) {
+    const r = anuncios.get(a.ad_id);
+    if (r) Object.assign(r, { titulo: a.titulo ?? null, texto: a.texto ?? null });
+  }
+
+  // Visitas por navegador nos últimos 7 dias (Clarity, total do site): quanto abre dentro do Instagram.
+  const seteDias = diaNoFuso(new Date(Date.now() - 7 * 86_400_000).toISOString(), org.fuso);
+  const porNavegador = new Map<string, number>();
+  for (const c of (coletas ?? []) as unknown as Array<{ dia: string; clarity_metricas: Array<{ metrica: string; valores: Record<string, unknown> }> }>) {
+    if (c.dia < seteDias) continue;
+    for (const m of c.clarity_metricas ?? []) {
+      if (m.metrica !== "Browser" || typeof m.valores?.name !== "string") continue;
+      porNavegador.set(m.valores.name, (porNavegador.get(m.valores.name) ?? 0) + n(m.valores.sessionsCount));
+    }
+  }
+
   const testesAtivos = (leads ?? []).filter((l) => l.teste_iniciado_em && !l.teste_cancelado_em && !l.primeiro_pagamento_em).map((l) => l.teste_iniciado_em as string);
   const vendas = (leads ?? []).filter((l) => l.primeiro_pagamento_em).length;
   const clarity = ((coletas ?? []) as unknown as Array<{ dia: string; clarity_metricas: Array<{ metrica: string; valores: Record<string, unknown> }> }>).map((c) =>
@@ -162,6 +182,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     clarityConectado: !!conexoesClarity,
     clarity,
     marcos,
+    navegadores: [...porNavegador].map(([nome, sessoes]) => ({ nome, sessoes })),
   });
 }
 

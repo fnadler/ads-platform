@@ -298,7 +298,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
               ) : (
                 <>
                   <strong>Cadastros (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong>Cadastros</strong> é o que chegou à sua fonte de venda com o anúncio de origem;
-                  é sobre eles que calculamos {comTeste ? "testes, vendas" : "vendas"} e o retorno. A diferença costuma vir de quem bloqueia o rastreio no navegador.
+                  é sobre eles que calculamos {comTeste ? "testes, vendas" : "vendas"} e o retorno. A diferença costuma vir de bloqueio de rastreio no navegador, de cadastros que chegam sem os parâmetros do anúncio ou do evento da Meta disparar antes de a conta existir.
                 </>
               )}
             </Aviso>

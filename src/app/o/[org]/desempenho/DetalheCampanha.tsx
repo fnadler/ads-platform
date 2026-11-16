@@ -1018,7 +1018,8 @@ function AbaVendas(d: DadosDetalhe) {
               <strong className="text-ink">Cadastros (Meta)</strong> é o que o Gerenciador conta pelo pixel. <strong className="text-ink">Cadastros</strong> é o que
               chegou à sua fonte de venda com o anúncio de origem; é sobre ele que calculamos {comTeste ? "testes, vendas" : "vendas"} e o retorno.
               {comTeste && " Testes conta quem iniciou; cancelados são os que desistiram antes da cobrança, e a venda só entra quando o pagamento acontece."} A diferença costuma
-              vir de quem bloqueia o rastreio no navegador ou chega sem os parâmetros do anúncio.
+              vir de bloqueio de rastreio no navegador, de cadastros que chegam sem os parâmetros do anúncio ou do evento da Meta disparar antes de a conta
+              existir (no envio do formulário, antes da confirmação do e-mail).
             </>
           )}
         </p>

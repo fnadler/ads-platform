@@ -37,6 +37,11 @@ export interface AnuncioResumo {
   leads_meta: number;
   leads: number;
   testes: number;
+  /** Vendas (pagamentos) ligadas ao anúncio na janela. */
+  vendas?: number;
+  /** Título e texto do anúncio, para o roteiro das variações do vencedor. */
+  titulo?: string | null;
+  texto?: string | null;
 }
 
 /** Experiência na página no dia (Clarity, total do site). Nulo quando a métrica não veio. */
@@ -68,6 +73,8 @@ export interface EntradaLeitura {
   clarity: DiaClarity[];
   /** Mudanças feitas na campanha (pausas, verba…), com o antes e depois de cada uma. */
   marcos?: MarcoComEfeito[];
+  /** Sessões por navegador nos últimos 7 dias (Clarity, total do site). */
+  navegadores?: Array<{ nome: string; sessoes: number }>;
 }
 
 export type MarcoComEfeito = Marco & { efeito: Efeito };
@@ -623,6 +630,108 @@ function regraRastreio(completos: DiaCampanha[]): Achado | null {
   };
 }
 
+// ───────────────────────────── A Meta conta mais do que chega ─────────────────────────────
+
+/**
+ * Diferença que dura a campanha toda entre os cadastros que a Meta conta e os que chegam ao sistema. Caso GN:
+ * a Meta contou 327 e chegaram 223 — o evento disparava no envio do formulário, antes da confirmação do e-mail,
+ * e a Meta otimizava para quem só preenchia. (A queda recente dessa fração é o achado "rastreio".)
+ */
+function regraDiferencaMeta(e: EntradaLeitura, completos: DiaCampanha[]): Achado | null {
+  if (e.funil === "venda_direta") return null;
+  const j = janela(completos);
+  if (j.leadsMeta < 30) return null;
+  const chegam = Math.min(j.leads / j.leadsMeta, 1);
+  if (chegam >= 0.8) return null;
+  const faltam = j.leadsMeta - j.leads;
+  return {
+    id: "diferenca-meta",
+    tom: chegam < 0.6 ? "agir" : "observar",
+    area: "vendas",
+    titulo: "A Meta conta cadastros que não chegam ao seu sistema",
+    destaque: { para: pct(chegam, 0), rotulo: "dos cadastros que a Meta conta chegam ao sistema", fracao: chegam },
+    acao: "Confira em que momento o seu site avisa a Meta de um cadastro.",
+    detalhe: `Em ${periodo(j)}, a Meta contou ${plural(j.leadsMeta, "cadastro", "cadastros")} e ${plural(j.leads, "chegou", "chegaram")} ao seu sistema: ${plural(faltam, "ficou", "ficaram")} pelo caminho. As causas mais comuns: o evento de cadastro dispara antes de a conta existir (no envio do formulário, antes da confirmação do e-mail), há um passo no meio em que as pessoas desistem (confirmar o e-mail, entrar com a conta), ou os cadastros chegam sem os parâmetros do anúncio. No primeiro caso a Meta otimiza a campanha para quem só preenche o formulário, não para quem vira cliente.`,
+    acaoDetalhe:
+      "Faça o evento de cadastro da Meta disparar só quando a conta existe de fato. Se o seu cadastro pede confirmação por e-mail, considere tirá-la do cadastro e pedir só num passo de mais valor (como o pagamento) — quem vem do Instagram costuma se perder ao abrir o e-mail em outro app. Confira também o rastreio dos anúncios.",
+    atalhos: ["conferir_rastreio"],
+  };
+}
+
+// ───────────────────────────── O anúncio que vende ─────────────────────────────
+
+/**
+ * Um anúncio concentra as vendas: o argumento dele é o que funciona, e vale multiplicá-lo. Caso GN: “B Gaveta”
+ * trouxe as 6 vendas; “D Como Vender” tinha custo por cadastro parecido e nenhuma venda.
+ */
+function regraVencedorVenda(e: EntradaLeitura): Achado | null {
+  const comVenda = e.anuncios.filter((a) => (a.vendas ?? 0) > 0);
+  const total = comVenda.reduce((s, a) => s + (a.vendas ?? 0), 0);
+  if (total < 3 || e.anuncios.filter((a) => a.gasto > 0).length < 2) return null;
+  const lider = [...comVenda].sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0))[0];
+  const fatia = (lider.vendas ?? 0) / total;
+  if (fatia < 0.6) return null;
+  const resto = e.anuncios.filter((a) => a.ad_id !== lider.ad_id);
+  const gastoResto = resto.reduce((s, a) => s + a.gasto, 0);
+  const vendasResto = total - (lider.vendas ?? 0);
+  const custoLider = lider.gasto / (lider.vendas ?? 1);
+  const comparacao = vendasResto
+    ? `Os outros anúncios saem a ${moeda(gastoResto / vendasResto, e.moeda)} por venda.`
+    : gastoResto > 0
+      ? `Os outros gastaram ${moeda(gastoResto, e.moeda)} sem nenhuma venda.`
+      : "";
+  const inicio = (t: string | null | undefined, n: number) => (t ? `${t.replace(/\s+/g, " ").trim().slice(0, n)}${t.length > n ? "…" : ""}` : null);
+  const titulo = inicio(lider.titulo, 80);
+  const texto = inicio(lider.texto, 140);
+  return {
+    id: `vencedor-${lider.ad_id}`,
+    tom: "observar",
+    area: "anuncios",
+    titulo: `“${lider.nome}” trouxe ${plural(lider.vendas ?? 0, "venda", "vendas")} de ${inteiro(total)}`,
+    destaque: { para: pct(fatia, 0), rotulo: "das vendas da campanha", fracao: fatia },
+    acao: "Faça 3 variações deste anúncio com o mesmo argumento.",
+    detalhe: `“${lider.nome}” sai a ${moeda(custoLider, e.moeda)} por venda. ${comparacao} O que decide é a venda, não o cadastro barato: um anúncio pode trazer muitos cadastros que não compram.`,
+    acaoDetalhe: [
+      titulo ? `Mantenha o argumento: “${titulo}”.` : "Mantenha o argumento deste anúncio.",
+      texto ? `O texto de hoje começa com “${texto}”.` : "",
+      "Mude o gancho (os 3 primeiros segundos do vídeo ou a primeira frase), teste outro formato (imagem ou carrossel) e outra chamada. Suba as variações numa campanha nova com esse argumento e deixe de fora os anúncios que não venderam.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    atalhos: ["nova_campanha"],
+  };
+}
+
+// ───────────────────────────── Visitas de dentro do Instagram ─────────────────────────────
+
+const NAVEGADOR_DE_APP = /instagram|facebook|messenger/i;
+
+/**
+ * Boa parte das visitas abre no navegador de dentro do Instagram ou do Facebook, onde confirmação por link,
+ * login com Google e pagamento em outra janela costumam quebrar. Caso GN: metade das visitas, e um terço dos
+ * cadastros se perdia ao abrir o e-mail de confirmação em outro app.
+ */
+function regraNavegadorApp(e: EntradaLeitura): Achado | null {
+  const lista = e.navegadores ?? [];
+  const total = lista.reduce((s, n) => s + n.sessoes, 0);
+  if (total < 100) return null;
+  const doApp = lista.filter((n) => NAVEGADOR_DE_APP.test(n.nome)).reduce((s, n) => s + n.sessoes, 0);
+  const fatia = doApp / total;
+  if (fatia < 0.4) return null;
+  return {
+    id: "navegador-app",
+    tom: "observar",
+    area: "pagina",
+    titulo: `${fatia >= 0.45 && fatia <= 0.55 ? "Metade" : pct(fatia, 0)} das visitas abre dentro do Instagram ou do Facebook`,
+    destaque: { para: pct(fatia, 0), rotulo: "das visitas do site nos últimos 7 dias", fracao: fatia },
+    acao: "Teste o seu cadastro abrindo o anúncio pelo celular, dentro do Instagram.",
+    detalhe: `Das ${inteiro(total)} visitas do site nos últimos 7 dias, ${inteiro(doApp)} abriram no navegador de dentro do Instagram ou do Facebook. Nele, o que tira a pessoa da tela costuma quebrar: confirmação de cadastro por link (o e-mail abre em outro app e a pessoa não volta), login com Google, pagamento em outra janela e downloads.`,
+    acaoDetalhe:
+      "Abra um anúncio seu pelo app do Instagram no celular e faça o caminho inteiro até o cadastro (e o pagamento, se houver). Troque confirmação por link por um código digitado na própria tela, ou deixe a confirmação para depois; prefira login com e-mail e senha; mantenha o pagamento na mesma janela.",
+    atalhos: ["testar_pagina", "gravacoes_clarity"],
+  };
+}
+
 function regraMaturidade(e: EntradaLeitura): Achado | null {
   if (e.funil === "cadastro_teste_venda") {
     const cobrancas = e.testesAtivos.map((t) => somaDias(t, e.diasTeste)).filter((d) => d >= e.hoje).sort();
@@ -701,17 +810,21 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
   // Ordem dentro de cada estado = importância: a causa principal da queda, o que afeta venda (testes,
   // rastreio, qualidade), depois as causas secundárias e a distribuição da verba.
   const [principal, ...secundarios] = regraTendencia(e, completos);
+  const rastreio = regraRastreio(completos);
   const achados = [
     principal,
     regraSaturacao(completos),
-    regraRastreio(completos),
+    rastreio,
+    rastreio ? null : regraDiferencaMeta(e, completos),
     regraTestesRecentes(e),
+    regraVencedorVenda(e),
     ...regraQualidade(e),
     ...regraRedistribuicao(e),
     ...secundarios,
     regraConcentracao(e, completos),
     regraMaturidade(e),
     regraClarity(e),
+    regraNavegadorApp(e),
   ]
     .filter((a): a is Achado => !!a)
     .sort((a, b) => ORDEM[a.tom] - ORDEM[b.tom]);

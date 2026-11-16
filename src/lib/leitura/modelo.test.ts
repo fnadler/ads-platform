@@ -230,3 +230,84 @@ describe("lerCampanha — verba que mudou de anúncio (caso GN, 08/11)", () => {
     expect(lerCampanha({ ...base, hoje: "2026-11-30" }).achados.some((x) => x.id.startsWith("redistribuicao"))).toBe(false);
   });
 });
+
+describe("lerCampanha — achados da fase 2 (caso GN, campanha toda)", () => {
+  // Totais de 01 a 15/11: a Meta contou 327 cadastros, 223 chegaram; B Gaveta trouxe as 6 vendas.
+  const dias = [
+    d("2026-11-01", 59.7, 4227, 1.24, 125, 108, 34, 23, 2),
+    d("2026-11-02", 64.98, 4832, 1.32, 223, 207, 45, 33, 4),
+    d("2026-11-03", 42.07, 3368, 1.16, 133, 119, 45, 28, 2),
+    d("2026-11-04", 44.79, 2973, 1.19, 130, 104, 21, 12, 0),
+    d("2026-11-05", 37.22, 2297, 1.17, 103, 93, 16, 11, 1),
+    d("2026-11-06", 38.29, 2545, 1.13, 90, 72, 17, 12, 2),
+    d("2026-11-07", 54.0, 3649, 1.22, 148, 125, 14, 9, 2),
+    d("2026-11-08", 50.56, 3684, 1.23, 156, 136, 20, 15, 3),
+    d("2026-11-09", 41.56, 3294, 1.17, 98, 86, 19, 15, 2),
+    d("2026-11-10", 37.69, 2950, 1.2, 89, 75, 18, 14, 1),
+    d("2026-11-11", 50.84, 3590, 1.16, 93, 82, 11, 7, 1),
+    d("2026-11-12", 32.01, 2154, 1.13, 59, 54, 11, 5, 1),
+    d("2026-11-13", 38.6, 2574, 1.08, 75, 63, 12, 11, 2),
+    d("2026-11-14", 53.28, 3958, 1.16, 124, 109, 17, 9, 2),
+    d("2026-11-15", 57.11, 4419, 1.11, 141, 118, 25, 18, 2),
+  ];
+  const GN_FIM: EntradaLeitura = {
+    ...GN,
+    hoje: "2026-11-16",
+    dias,
+    anuncios: [
+      { ad_id: "a", nome: "A1 | A repetida", gasto: 36.94, impressoes: 3059, leads_meta: 18, leads: 10, testes: 2, vendas: 0 },
+      {
+        ad_id: "b",
+        nome: "A1 | B Gaveta",
+        gasto: 424.88,
+        impressoes: 29461,
+        leads_meta: 212,
+        leads: 147,
+        testes: 19,
+        vendas: 6,
+        titulo: "Suas repetidas já são uma loja.",
+        texto: "Tem figurinha da Copa repetida parada aí? Na GN Coleciona, suas repetidas viram uma loja com link próprio.",
+      },
+      { ad_id: "c", nome: "A1 | C Digitando", gasto: 6.91, impressoes: 526, leads_meta: 1, leads: 2, testes: 0, vendas: 0 },
+      { ad_id: "d", nome: "A1 | D Como Vender", gasto: 243.21, impressoes: 18201, leads_meta: 96, leads: 64, testes: 6, vendas: 0 },
+    ],
+    navegadores: [
+      { nome: "InstagramApp", sessoes: 956 },
+      { nome: "ChromeMobile", sessoes: 325 },
+      { nome: "MobileSafari", sessoes: 227 },
+      { nome: "FacebookApp", sessoes: 227 },
+      { nome: "Chrome", sessoes: 75 },
+      { nome: "SamsungInternet", sessoes: 45 },
+    ],
+  };
+  const a = porId(GN_FIM);
+
+  it("diferença entre Meta e sistema: 68% chegam", () => {
+    expect(a["diferenca-meta"]?.destaque?.para).toBe("68%");
+    expect(a["diferenca-meta"]?.tom).toBe("observar");
+  });
+
+  it("vencedor por venda: B Gaveta, com o roteiro do argumento", () => {
+    const v = a["vencedor-b"];
+    expect(v?.titulo).toBe("“A1 | B Gaveta” trouxe 6 vendas de 6");
+    expect(v?.acaoDetalhe).toContain("Suas repetidas já são uma loja.");
+    expect(v?.detalhe).toContain("sem nenhuma venda");
+  });
+
+  it("navegador de app: 64% das visitas abrem dentro do Instagram ou do Facebook", () => {
+    expect(a["navegador-app"]?.destaque?.para).toBe("64%");
+  });
+
+  it("não acusa sem volume nem quando a diferença é pequena", () => {
+    const pouco = porId({ ...GN_FIM, navegadores: [{ nome: "InstagramApp", sessoes: 60 }], anuncios: GN_FIM.anuncios.map((x) => ({ ...x, vendas: x.ad_id === "b" ? 2 : 0 })) });
+    expect(pouco["navegador-app"]).toBeUndefined();
+    expect(pouco["vencedor-b"]).toBeUndefined();
+    const proximo = porId({ ...GN_FIM, dias: dias.map((x) => ({ ...x, leads: Math.round(x.leads_meta * 0.9) })) });
+    expect(proximo["diferenca-meta"]).toBeUndefined();
+  });
+
+  it("vendas divididas não têm vencedor", () => {
+    const dividido = porId({ ...GN_FIM, anuncios: GN_FIM.anuncios.map((x) => ({ ...x, vendas: x.ad_id === "b" ? 3 : x.ad_id === "d" ? 3 : 0 })) });
+    expect(Object.keys(dividido).some((k) => k.startsWith("vencedor"))).toBe(false);
+  });
+});
