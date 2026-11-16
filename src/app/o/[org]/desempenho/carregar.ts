@@ -168,7 +168,7 @@ export interface ContextoAcoes {
     vendas: number;
   }>;
   /** Para os atalhos das sugestões. */
-  rotas: { configuracoes: string; campanhas: string; vendas: string; rastreio: string };
+  rotas: { configuracoes: string; campanhas: string; vendas: string; rastreio: string; publicos: string | null };
   projetoClarity: string | null;
 }
 

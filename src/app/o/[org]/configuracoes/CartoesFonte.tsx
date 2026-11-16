@@ -114,6 +114,9 @@ Content-Type: application/json
   "atribuicao":     { "utm_source": "meta", "utm_campaign_id": "…", "utm_adset_id": "…", "utm_ad_id": "…" },
   "primeiro_toque": { "utm_campaign_id": "…", "utm_ad_id": "…" } }
 
+{ "tipo": "cadastro_iniciado", "email": "…", "atribuicao": { "utm_campaign_id": "…", "utm_ad_id": "…" } }
+  (opcional: no primeiro passo do cadastro, antes de a conta existir. Mede quem começa e não termina
+   e permite o público "Começaram o cadastro e não terminaram". Depois, mande o "lead" com o mesmo e-mail.)
 { "tipo": "teste_iniciado", "id_externo": "id-do-cliente" }
 { "tipo": "teste_cancelado", "id_externo": "id-do-cliente" }
 { "tipo": "teste_reativado", "id_externo": "id-do-cliente" }

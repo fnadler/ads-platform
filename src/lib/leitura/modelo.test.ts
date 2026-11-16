@@ -344,4 +344,15 @@ describe("lerCampanha — achados da fase 2 (caso GN, campanha toda)", () => {
   it("sem meta, nenhum achado de meta", () => {
     expect(Object.keys(porId(GN_FIM)).some((k) => k.startsWith("meta-"))).toBe(false);
   });
+
+  // Fase 6: quem começa o cadastro e não termina (evento cadastro_iniciado).
+  it("cadastro incompleto: 68% terminam vira observar, com o atalho do público de recuperação", () => {
+    const c = porId({ ...GN_FIM, iniciados: { total: 330, concluidos: 223 } })["cadastro-incompleto"];
+    expect(c?.titulo).toBe("32% de quem começa o cadastro não termina");
+    expect(c?.tom).toBe("observar");
+    expect(c?.atalhos).toContain("publico_iniciaram");
+    expect(porId({ ...GN_FIM, iniciados: { total: 330, concluidos: 140 } })["cadastro-incompleto"]?.tom).toBe("agir");
+    expect(porId({ ...GN_FIM, iniciados: { total: 20, concluidos: 5 } })["cadastro-incompleto"]).toBeUndefined();
+    expect(porId({ ...GN_FIM, iniciados: { total: 300, concluidos: 250 } })["cadastro-incompleto"]).toBeUndefined();
+  });
 });

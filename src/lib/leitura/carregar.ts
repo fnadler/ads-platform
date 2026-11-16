@@ -1,9 +1,11 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import { inicioDoDia } from "@/lib/formato";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
 import { caminho } from "@/lib/clarity/campanha";
 import { carregarMetas } from "@/lib/campanhas/metas";
+import { contarIniciados } from "@/lib/vendas/iniciados";
 import { efeitoDoMarco, marcosDeOperacoes, marcosDePagina, type GastoAnuncioDia, type OperacaoMeta, type TestePagina } from "./marcos";
 import { lerCampanha, type AnuncioResumo, type DiaCampanha, type DiaClarity, type Leitura } from "./modelo";
 
@@ -25,6 +27,8 @@ interface Org {
 const diaNoFuso = (iso: string, fuso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: fuso });
 const horaNoFuso = (iso: string, fuso: string) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: fuso, hour: "2-digit", minute: "2-digit" }).replace(":", "h");
 const n = (v: unknown) => Number(v) || 0;
+/** Começo de hoje no fuso da organização (ISO). */
+const inicioHoje = (fuso: string) => inicioDoDia(diaNoFuso(new Date().toISOString(), fuso), fuso);
 
 /** Métricas do total do site numa coleta diária do Clarity (nomes como a API devolve). */
 function diaClarity(dia: string, metricas: Array<{ metrica: string; valores: Record<string, unknown> }>): DiaClarity {
@@ -49,7 +53,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
   const inicio = new Date(Date.now() - JANELA_DIAS * 86_400_000).toISOString();
   const deDia = diaNoFuso(inicio, org.fuso);
 
-  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }, { data: pagas }, metas] = await Promise.all([
+  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }, { data: pagas }, metas, iniciados] = await Promise.all([
     supabase
       .from("meta_campanha_dia")
       .select("dia, gasto, impressoes, frequencia, cliques_link, visualizacoes_pagina, leads, sincronizado_em")
@@ -86,6 +90,8 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     // Vendas pagas ligadas a cada anúncio (o anúncio da venda, ou o do cadastro de origem).
     supabase.from("vendas_atribuidas").select("ad_id").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).eq("tipo", "pagamento").gte("ocorrida_em", inicio),
     carregarMetas(supabase, org.id, campanhaId),
+    // Só dias completos: o começo de hoje (no fuso) fica de fora, como no resto da leitura.
+    contarIniciados(supabase, org.id, { desde: inicio, campanha: campanhaId, ate: inicioHoje(org.fuso) }),
   ]);
 
   // Mídia por dia (somando contas) + leads e testes pelo dia do cadastro.
@@ -207,6 +213,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     marcos,
     navegadores: [...porNavegador].map(([nome, sessoes]) => ({ nome, sessoes })),
     metas,
+    iniciados: iniciados ?? undefined,
   });
 }
 

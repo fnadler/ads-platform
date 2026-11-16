@@ -24,6 +24,17 @@ describe("contrato do webhook", () => {
   });
 });
 
+describe("cadastro iniciado", () => {
+  it("aceita só com e-mail ou telefone (o id é opcional) e não guarda o contato no payload", async () => {
+    const { payloadSeguro } = await import("./ingestao");
+    const r = Evento.safeParse({ tipo: "cadastro_iniciado", email: "a@b.com", atribuicao: { utm_campaign_id: "120211", utm_ad_id: "120213" } });
+    expect(r.success).toBe(true);
+    expect(payloadSeguro(r.data!)).not.toHaveProperty("email");
+    expect(Evento.safeParse({ tipo: "cadastro_iniciado", telefone: "(11) 98888-7777", id_externo: "sessao-1" }).success).toBe(true);
+    expect(Evento.safeParse({ tipo: "cadastro_iniciado", id_externo: "sessao-1" }).success).toBe(false);
+  });
+});
+
 describe("dados pessoais", () => {
   it("hash do e-mail ignora caixa e espaços; telefone ganha o 55", () => {
     expect(hashEmail(" Cliente@Exemplo.com ")).toBe(hashEmail("cliente@exemplo.com"));

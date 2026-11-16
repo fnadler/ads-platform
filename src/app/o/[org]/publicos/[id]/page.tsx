@@ -20,15 +20,18 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
   const { org, papel, supabase } = await exigirGestao(slug);
   const gestor = temPapel(papel, "gestor");
   const novo = id === "novo";
-  const [{ data: p }, { data: config }, { data: origens }] = await Promise.all([
+  const [{ data: p }, { data: config }, { data: origens }, { count: iniciados }] = await Promise.all([
     novo ? Promise.resolve({ data: null }) : supabase.from("publicos").select("*").eq("id", id).eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("config_publicacao").select("aceite_publicos_clientes_em, pixel_id").eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("publicos").select("id, nome, meta_tamanho").eq("organizacao_id", org.id).in("tipo", ["funil", "site"]).not("meta_audience_id", "is", null),
+    supabase.from("cadastros_iniciados").select("id", { count: "exact", head: true }).eq("organizacao_id", org.id),
   ]);
   if (!novo && !p) notFound();
   const tipo = (novo ? String(busca.tipo ?? "detalhado") : p!.tipo) as TipoPublico;
   if (!(tipo in TIPOS_PUBLICO)) notFound();
-  const def = (p?.definicao ?? {}) as Record<string, unknown>;
+  // Novo público vindo de um atalho (balanço, leitura): segmento, nome e dias já preenchidos.
+  const sugerido = (k: string) => (novo && typeof busca[k] === "string" ? (busca[k] as string) : undefined);
+  const def = (p?.definicao ?? { segmento: sugerido("segmento"), dias: sugerido("dias") ? Number(sugerido("dias")) : null }) as Record<string, unknown>;
   const tam = p?.meta_tamanho as { min?: number; max?: number; enviados?: number; situacao?: string; em?: string } | null;
   const hidden = (
     <>
@@ -100,7 +103,7 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
                     <Campo
                       rotulo="Nome do público"
                       name="nome"
-                      defaultValue={p?.nome ?? ""}
+                      defaultValue={p?.nome ?? sugerido("nome") ?? ""}
                       required
                       className="sm:col-span-2"
                       placeholder={tipo === "funil" ? "Ex.: Pagantes" : tipo === "site" ? "Ex.: Visitantes do site 30 dias" : "Ex.: Semelhante aos pagantes 1%"}
@@ -114,6 +117,12 @@ export default async function Publico({ params, searchParams }: PageProps<"/o/[o
                             </option>
                           ))}
                         </Selecao>
+                        {!iniciados && (
+                          <p className="text-xs text-ink-3 sm:col-span-2">
+                            “Começaram o cadastro e não terminaram” depende do evento <code>cadastro_iniciado</code>, que o seu site manda no primeiro passo do cadastro (Configurações
+                            → Webhook). Ainda não chegou nenhum.
+                          </p>
+                        )}
                         <Campo
                           rotulo="Só quem se cadastrou nos últimos (dias)"
                           name="dias"

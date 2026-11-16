@@ -99,6 +99,7 @@ Em **Configurações → Meta**, cole o token de um **usuário do sistema** do p
 **Webhook genérico** (qualquer site ou ferramenta de automação):
 - Em **Configurações → Webhook**, gere o token. O endereço é `POST /api/webhook/eventos`, com `Authorization: Bearer whk_…`.
 - O formato aparece na tela: `lead`, `teste_iniciado`, `venda` e `reembolso`, um por vez ou `{ "eventos": [...] }`.
+- Opcional: `cadastro_iniciado` (com `email` ou `telefone` e a `atribuicao`), enviado no primeiro passo do cadastro, antes de a conta existir. Mostra quantos começam e não terminam (no funil da campanha e no balanço) e libera o público "Começaram o cadastro e não terminaram". Terminou = chegou um `lead` com o mesmo `id_externo`, e-mail ou telefone.
 - Reenviar o mesmo evento não duplica nada.
 
 **Stripe:**

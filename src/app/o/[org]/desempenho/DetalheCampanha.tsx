@@ -17,6 +17,7 @@ import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitur
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import type { Balanco, Recomendacao } from "@/lib/balanco/modelo";
 import { mesesParaPagar, textoMeses } from "@/lib/payback";
+import { novoPublicoFunil } from "@/lib/publicos/modelo";
 import type { LeadsVendas } from "@/lib/vendas/lista";
 import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
 import { Termo } from "@/components/Termo";
@@ -75,6 +76,8 @@ export interface DadosDetalhe {
   mensalidade?: number | null;
   /** Balanço da campanha inteira (só na aba Balanço). */
   balanco?: Balanco | null;
+  /** Cadastros iniciados no período (evento cadastro_iniciado), quando o site manda. */
+  iniciados?: { total: number; concluidos: number } | null;
   /** Para onde levam as recomendações do balanço (só para gestor; quem só lê não tem Gerenciar). */
   rotasGerenciar?: Record<NonNullable<Recomendacao["link"]>, string> | null;
 }
@@ -191,6 +194,7 @@ const PASSO_DA_ETAPA: Record<Etapa, string> = {
 };
 const PASSO_DO_ACHADO: Record<string, string> = {
   saturacao: "cliques",
+  "cadastro-incompleto": "cadastros",
   "testes-recentes": "testes",
 };
 
@@ -245,11 +249,21 @@ function CaminhoCampanha({ d }: { d: DadosDetalhe }) {
       aba: "vendas",
     });
   else {
+    // Com o evento cadastro_iniciado, o cadastro se divide em começar e terminar: aparece a perda no meio dele.
+    const ini = d.iniciados;
+    if (ini)
+      passos.push({
+        id: "iniciados",
+        rotulo: "Começaram o cadastro",
+        valor: inteiro(ini.total),
+        taxa: `${pct(razao(ini.total, t.visualizacoes_pagina), 0)} das visitas`,
+        aba: "pagina",
+      });
     passos.push({
       id: "cadastros",
       rotulo: "Cadastros",
       valor: inteiro(cadastros),
-      taxa: `${pct(razao(cadastros, t.visualizacoes_pagina), 0)} das visitas`,
+      taxa: ini ? `${pct(Math.min(ini.concluidos / ini.total, 1), 0)} de quem começou terminou` : `${pct(razao(cadastros, t.visualizacoes_pagina), 0)} das visitas`,
       aba: "pagina",
     });
     if (d.funil === "cadastro_teste_venda")
@@ -279,7 +293,7 @@ function CaminhoCampanha({ d }: { d: DadosDetalhe }) {
   return (
     <div className="flex flex-col gap-2">
       <ol
-        className={`grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line shadow-card sm:grid-cols-3 ${passos.length === 7 ? "lg:grid-cols-7" : passos.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}
+        className={`grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line shadow-card sm:grid-cols-3 ${passos.length === 8 ? "lg:grid-cols-8" : passos.length === 7 ? "lg:grid-cols-7" : passos.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}
       >
         {passos.map((p, i) => {
           const tom = alerta.get(p.id);
@@ -1175,8 +1189,11 @@ function AbaBalanco(d: DadosDetalhe) {
                   <strong className="text-ink [overflow-wrap:anywhere]">{r.titulo}</strong>
                   <p className="text-sm text-ink-2 [overflow-wrap:anywhere]">{r.texto}</p>
                   {r.link && d.rotasGerenciar && (
-                    <Link href={d.rotasGerenciar[r.link]} className="inline-flex items-center gap-1 self-start text-sm font-medium text-accent-text">
-                      {ROTULO_LINK[r.link]} <IconeSeta tamanho={14} />
+                    <Link
+                      href={r.publico ? novoPublicoFunil(d.rotasGerenciar.publicos, r.publico.segmento, r.publico.nome, r.publico.dias) : d.rotasGerenciar[r.link]}
+                      className="inline-flex items-center gap-1 self-start text-sm font-medium text-accent-text"
+                    >
+                      {r.publico ? `Criar o público “${r.publico.nome}”` : ROTULO_LINK[r.link]} <IconeSeta tamanho={14} />
                     </Link>
                   )}
                 </div>

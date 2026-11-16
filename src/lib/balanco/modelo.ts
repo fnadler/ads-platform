@@ -6,7 +6,8 @@
 // Caso de referência: GN Coleciona, "GN | Cadastro Loja | A1 ganchos" (01 a 16/11/2026).
 
 import { decimal, inteiro, moeda, pct } from "@/lib/formato";
-import type { Achado, MarcoComEfeito } from "@/lib/leitura/modelo";
+import { REFERENCIA_TERMINAM, type Achado, type MarcoComEfeito } from "@/lib/leitura/modelo";
+import type { Segmento } from "@/lib/publicos/modelo";
 import { mesesParaPagar, textoMeses } from "@/lib/payback";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 
@@ -50,6 +51,8 @@ export interface EntradaBalanco {
   marcos: MarcoComEfeito[];
   /** Assinatura: a mensalidade (mediana dos pagamentos), para o payback. */
   mensalidade?: number | null;
+  /** Cadastros iniciados na campanha (evento opcional cadastro_iniciado) e quantos terminaram. */
+  iniciados?: { total: number; concluidos: number } | null;
 }
 
 export type TomItem = "bom" | "ruim" | "neutro";
@@ -74,6 +77,8 @@ export interface Recomendacao {
   texto: string;
   /** Para onde levar a pessoa na plataforma, quando há. */
   link?: "nova_campanha" | "publicos" | "rastreio" | "configuracoes";
+  /** Com link "publicos": o público do funil a criar, já preenchido. */
+  publico?: { segmento: Segmento; nome: string; dias?: number };
 }
 
 export interface Balanco {
@@ -126,6 +131,19 @@ function funil(e: EntradaBalanco): EtapaFunil[] {
   }
   etapas.push(
     etapa("Visitaram → se cadastraram", div(t.leadsMeta, t.visitas), REFERENCIA.cadastroPagina, (v) => `${pct(v, 0)} das visitas se cadastraram`, "A página convence a deixar o contato."),
+  );
+  // Com o evento cadastro_iniciado: a perda dentro do próprio cadastro (começou e não terminou).
+  if (e.iniciados?.total)
+    etapas.push(
+      etapa(
+        "Começaram o cadastro → terminaram",
+        Math.min(e.iniciados.concluidos / e.iniciados.total, 1),
+        REFERENCIA_TERMINAM,
+        (v) => `${pct(v, 0)} de quem começou terminou`,
+        "O cadastro é curto e não tira a pessoa da tela no meio.",
+      ),
+    );
+  etapas.push(
     etapa(
       "Cadastros da Meta → chegaram ao sistema",
       t.leadsMeta ? Math.min(t.leads / t.leadsMeta, 1) : null,
@@ -253,12 +271,21 @@ export function montarBalanco(e: EntradaBalanco): Balanco {
       texto: `Só ${diferenca.destaque?.para ?? ""} dos cadastros que a Meta contou chegaram ao sistema. Faça o evento disparar só quando a conta existe de fato; se há confirmação de e-mail no cadastro, considere tirá-la.`,
       link: "rastreio",
     });
+  const vazouCadastro = etapas.find((x) => x.rotulo === "Começaram o cadastro → terminaram" && x.vazou);
+  if (vazouCadastro)
+    recomendacoes.push({
+      titulo: "Recupere quem começou o cadastro e não terminou",
+      texto: `${vazouCadastro.taxa}. Encurte o cadastro (deixe confirmação de e-mail e perfil para depois) e faça um anúncio de retomada para o público “Começaram o cadastro e não terminaram”: gente que já mostrou interesse.`,
+      link: "publicos",
+      publico: { segmento: "iniciaram_sem_concluir", nome: "Começaram o cadastro e não terminaram", dias: 30 },
+    });
   const vazouTeste = etapas.find((x) => x.rotulo === "Cadastraram → começaram o teste" && x.vazou);
   if (vazouTeste)
     recomendacoes.push({
       titulo: "Leve quem se cadastra até o teste grátis",
-      texto: `${vazouTeste.taxa}. Confira se a primeira tela depois do cadastro continua a promessa do anúncio, mande um lembrete no 1º e no 3º dia e crie o público “Cadastraram e não iniciaram teste” para um anúncio de retomada.`,
+      texto: `${vazouTeste.taxa}. Confira se a primeira tela depois do cadastro continua a promessa do anúncio, mande um lembrete no 1º e no 3º dia e crie o público “Cadastraram e não testaram” para um anúncio de retomada.`,
       link: "publicos",
+      publico: { segmento: "cadastrados_sem_teste", nome: "Cadastraram e não testaram", dias: 30 },
     });
   if (navegador)
     recomendacoes.push({

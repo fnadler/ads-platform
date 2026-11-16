@@ -77,6 +77,8 @@ export interface EntradaLeitura {
   navegadores?: Array<{ nome: string; sessoes: number }>;
   /** Metas da campanha: custo aceito por cadastro e por venda (nulo = sem meta). */
   metas?: { cadastro: number | null; venda: number | null };
+  /** Cadastros iniciados (evento cadastro_iniciado) nos dias completos da janela, e quantos terminaram. */
+  iniciados?: { total: number; concluidos: number };
 }
 
 export type MarcoComEfeito = Marco & { efeito: Efeito };
@@ -93,7 +95,15 @@ export type AcaoExecutavel = { tipo: "testar_anuncios"; anuncios: string[] } | {
  * Atalho para investigar ou resolver dentro da plataforma (ou no Clarity): conferir a página ou o rastreio
  * na hora, ver as gravações, conectar o Clarity, criar anúncios novos, ver os cadastros recentes.
  */
-export type Atalho = "testar_pagina" | "conferir_rastreio" | "gravacoes_clarity" | "conectar_clarity" | "nova_campanha" | "ver_cadastros";
+export type Atalho =
+  | "testar_pagina"
+  | "conferir_rastreio"
+  | "gravacoes_clarity"
+  | "conectar_clarity"
+  | "nova_campanha"
+  | "ver_cadastros"
+  | "publico_iniciaram"
+  | "publico_sem_teste";
 
 /** O número que resume o achado. Com `de`, é uma mudança (antes → agora); com `fracao`, vira barra. */
 export interface Destaque {
@@ -576,6 +586,7 @@ function regraQualidade(e: EntradaLeitura): Achado[] {
           acaoDetalhe:
             "Ou ele atrai gente que se cadastra sem intenção de usar, ou a pessoa não encontra depois do cadastro o que o anúncio prometeu. Faça o cadastro pelo anúncio e veja a primeira tela: se o anúncio fala de uma coisa (ex.: vender) e a tela abre em outra (ex.: colecionar), aponte o destino desse anúncio para a parte do site que continua a promessa dele. Se a tela já continua a promessa, reduza a verba ou pause o anúncio.",
           acaoExecutavel: chance < 0.05 ? { tipo: "pausar_anuncio" as const, anuncio: a.ad_id } : undefined,
+          atalhos: ["publico_sem_teste"],
         } satisfies Achado,
       ];
     });
@@ -803,6 +814,35 @@ function regraClarity(e: EntradaLeitura): Achado | null {
   };
 }
 
+// ───────────────────────────── Quem começa o cadastro e não termina ─────────────────────────────
+
+/** Abaixo disto, a perda dentro do cadastro merece atenção (de quem deixa o contato no 1º passo, quantos terminam). */
+export const REFERENCIA_TERMINAM = 0.7;
+
+/**
+ * Perda dentro do próprio cadastro, medida pelo evento cadastro_iniciado (opcional, enviado pelo site no primeiro
+ * passo). Caso GN antes da mudança: a confirmação por e-mail no meio do cadastro perdia cerca de um terço.
+ */
+function regraCadastroIncompleto(e: EntradaLeitura): Achado | null {
+  const i = e.iniciados;
+  if (!i || i.total < 30 || e.funil === "venda_direta") return null;
+  const terminam = Math.min(i.concluidos / i.total, 1);
+  if (terminam >= REFERENCIA_TERMINAM) return null;
+  const perdidos = i.total - i.concluidos;
+  return {
+    id: "cadastro-incompleto",
+    tom: terminam < 0.5 ? "agir" : "observar",
+    area: "pagina",
+    titulo: `${pct(1 - terminam, 0)} de quem começa o cadastro não termina`,
+    destaque: { para: pct(terminam, 0), rotulo: "de quem começou o cadastro terminou", fracao: terminam, sentido: "pior" },
+    acao: "Encurte o cadastro e recupere quem parou no meio com um anúncio.",
+    detalhe: `${plural(i.total, "pessoa começou", "pessoas começaram")} o cadastro (deixaram o contato no primeiro passo) e ${plural(i.concluidos, "terminou", "terminaram")}: ${plural(perdidos, "ficou", "ficaram")} no meio. Costuma pesar: pedir confirmação por e-mail ou código antes de a conta existir, formulário longo, senha com muitas regras, login social que abre outra janela.`,
+    acaoDetalhe:
+      "Deixe no cadastro só o indispensável e mova o resto para depois (confirmar o e-mail, completar o perfil). Crie o público “Começaram o cadastro e não terminaram” e faça um anúncio de retomada para ele: são pessoas que já mostraram interesse e saem mais barato que um público novo.",
+    atalhos: ["publico_iniciaram", "testar_pagina"],
+  };
+}
+
 // ───────────────────────────── Metas ─────────────────────────────
 
 /** Mínimo de dias com gasto antes de comparar com a meta: o começo da campanha é caro e instável. */
@@ -924,6 +964,7 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
     rastreio,
     rastreio ? null : regraDiferencaMeta(e, completos),
     ...regraMetas(e, completos),
+    regraCadastroIncompleto(e),
     regraTestesRecentes(e),
     regraVencedorVenda(e),
     ...regraQualidade(e),

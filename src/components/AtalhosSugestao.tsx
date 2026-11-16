@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import type { ContextoAcoes } from "@/app/o/[org]/desempenho/carregar";
 import { conferirRastreio, testarPagina, type ResultadoConferencia } from "@/lib/leitura/conferencias";
 import type { Atalho } from "@/lib/leitura/modelo";
+import { novoPublicoFunil } from "@/lib/publicos/modelo";
 import { IconeCheck, IconeExclamacao, IconeExterno, IconeSeta, IconeX } from "./Icones";
 import { Modal } from "./Modal";
 import { Aviso, Botao, Esqueleto } from "./ui";
@@ -99,10 +100,20 @@ export function AtalhosSugestao({ atalhos, ctx }: { atalhos?: Atalho[]; ctx?: Co
               Ver gravações no Clarity <IconeExterno tamanho={14} />
             </a>
           ) : null;
+        if ((a === "publico_iniciaram" || a === "publico_sem_teste") && !ctx.rotas.publicos) return null;
+        const publicos = ctx.rotas.publicos ?? "";
         const interno = {
           conectar_clarity: { href: ctx.rotas.configuracoes, rotulo: "Conectar o Clarity" },
           nova_campanha: { href: ctx.rotas.campanhas, rotulo: "Criar anúncios novos" },
           ver_cadastros: { href: ctx.rotas.vendas, rotulo: "Ver os cadastros recentes" },
+          publico_iniciaram: {
+            href: novoPublicoFunil(publicos, "iniciaram_sem_concluir", "Começaram o cadastro e não terminaram", 30),
+            rotulo: "Criar o público de quem não terminou",
+          },
+          publico_sem_teste: {
+            href: novoPublicoFunil(publicos, "cadastrados_sem_teste", "Cadastraram e não testaram", 30),
+            rotulo: "Criar o público de quem não testou",
+          },
         }[a];
         return (
           <Link key={a} href={interno.href} className={classeLink}>

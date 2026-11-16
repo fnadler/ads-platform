@@ -40,6 +40,20 @@ const EventoLead = z.object({
   primeiro_toque: Atribuicao.optional(),
 });
 
+// Primeiro passo do cadastro (deixou e-mail ou telefone), antes de a conta existir. Mede quem começa e não
+// termina e alimenta o público de recuperação. Sem id_externo, a chave é o próprio e-mail ou telefone.
+const EventoCadastroIniciado = z
+  .object({
+    tipo: z.literal("cadastro_iniciado"),
+    id_externo: texto(200),
+    ocorrido_em: quando,
+    email: texto(320),
+    telefone: texto(40),
+    atribuicao: Atribuicao.optional(),
+    primeiro_toque: Atribuicao.optional(),
+  })
+  .refine((e) => !!(e.email || e.telefone), { message: "Envie o e-mail ou o telefone de quem começou o cadastro.", path: ["email"] });
+
 const EventoTeste = z.object({
   tipo: z.literal("teste_iniciado"),
   id_externo: z.string().trim().min(1).max(200), // do lead
@@ -67,7 +81,7 @@ const EventoVenda = z.object({
   atribuicao: Atribuicao.optional(),
 });
 
-export const Evento = z.discriminatedUnion("tipo", [EventoLead, EventoTeste, EventoCancelado, EventoReativado, EventoVenda]);
+export const Evento = z.discriminatedUnion("tipo", [EventoLead, EventoCadastroIniciado, EventoTeste, EventoCancelado, EventoReativado, EventoVenda]);
 export type Evento = z.infer<typeof Evento>;
 export const CorpoWebhook = z.union([z.object({ eventos: z.array(z.unknown()).min(1).max(500) }), z.record(z.string(), z.unknown())]);
 
@@ -113,7 +127,17 @@ async function registrarEvento(ctx: Contexto, chave: string, e: Evento) {
 }
 
 /** Chave de idempotência do evento (a mesma no sucesso e na falha: reenviar limpa o erro). */
-const chaveDe = (e: Evento) => (e.tipo === "lead" ? `lead:${e.id_externo}` : e.tipo === "teste_iniciado" ? `teste:${e.id_externo}` : `${e.tipo}:${e.id_externo}`);
+const chaveDe = (e: Evento) =>
+  e.tipo === "cadastro_iniciado"
+    ? `iniciado:${idIniciado(e)}`
+    : e.tipo === "lead"
+      ? `lead:${e.id_externo}`
+      : e.tipo === "teste_iniciado"
+        ? `teste:${e.id_externo}`
+        : `${e.tipo}:${e.id_externo}`;
+
+/** Chave do cadastro iniciado: o id_externo enviado ou, sem ele, o hash do e-mail (ou do telefone). */
+const idIniciado = (e: Extract<Evento, { tipo: "cadastro_iniciado" }>) => e.id_externo ?? `h:${hashEmail(e.email) ?? hashTelefone(e.telefone)}`;
 
 /** Evento recusado fica registrado com o erro, para aparecer em Leads e vendas (e não só no log de quem enviou). */
 async function registrarFalha(ctx: Contexto, e: Evento, erro: string) {
@@ -189,6 +213,28 @@ async function aplicarEvento(ctx: Contexto, e: Evento): Promise<void> {
         .eq("organizacao_id", ctx.organizacaoId)
         .eq("id_externo", e.id_externo)
         .is("primeiro_pagamento_em", null);
+    await registrarEvento(ctx, chaveDe(e), e);
+    return;
+  }
+
+  if (e.tipo === "cadastro_iniciado") {
+    const email_hash = hashEmail(e.email);
+    const telefone_hash = hashTelefone(e.telefone);
+    if (!email_hash && !telefone_hash) throw new Error("E-mail ou telefone inválido.");
+    const id_externo = idIniciado(e);
+    // Reenviar (ou o mesmo começar de novo) atualiza o contato e a origem, mas mantém a data do primeiro início.
+    const { data: atual } = await ctx.admin.from("cadastros_iniciados").select("id").eq("organizacao_id", ctx.organizacaoId).eq("id_externo", id_externo).maybeSingle();
+    const campos = {
+      ...semVazios({ email_hash, telefone_hash, codigo_teste: codigoTeste(e.email), fbclid: e.atribuicao?.fbclid, landing_path: e.atribuicao?.landing_path }),
+      ...prefixar(e.atribuicao, ""),
+      ...prefixar(e.primeiro_toque, "ftp_"),
+    };
+    const { error } = atual
+      ? await ctx.admin.from("cadastros_iniciados").update(campos).eq("id", atual.id)
+      : await ctx.admin
+          .from("cadastros_iniciados")
+          .insert({ organizacao_id: ctx.organizacaoId, conexao_id: ctx.conexaoId, id_externo, iniciado_em: em(e.ocorrido_em), ...campos });
+    if (error) throw new Error(error.message);
     await registrarEvento(ctx, chaveDe(e), e);
     return;
   }

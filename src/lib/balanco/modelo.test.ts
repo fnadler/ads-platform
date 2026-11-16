@@ -77,4 +77,23 @@ describe("montarBalanco — caso GN", () => {
     expect(semVenda.funcionou[0].texto).toContain("19 testes");
     expect(semVenda.recomendacoes[0].titulo).not.toContain("Concentre");
   });
+
+  it("a recomendação de quem não testou abre o público já preenchido", () => {
+    expect(b.recomendacoes.find((r) => r.titulo === "Leve quem se cadastra até o teste grátis")?.publico).toEqual({ segmento: "cadastrados_sem_teste", nome: "Cadastraram e não testaram", dias: 30 });
+  });
+
+  // Fase 6: com o evento cadastro_iniciado (ex.: o GN antes de tirar a confirmação de e-mail, 330 começaram e 223 terminaram).
+  it("com cadastro iniciado, mostra a perda dentro do cadastro e recomenda o público de recuperação", () => {
+    const c = montarBalanco({ ...GN, iniciados: { total: 330, concluidos: 223 } });
+    const etapa = c.funil.find((e) => e.rotulo === "Começaram o cadastro → terminaram");
+    expect(etapa).toMatchObject({ taxa: "68% de quem começou terminou", vazou: true });
+    expect(c.funil.map((e) => e.rotulo).indexOf("Começaram o cadastro → terminaram")).toBe(c.funil.map((e) => e.rotulo).indexOf("Visitaram → se cadastraram") + 1);
+    const r = c.recomendacoes.find((x) => x.titulo === "Recupere quem começou o cadastro e não terminou");
+    expect(r?.publico?.segmento).toBe("iniciaram_sem_concluir");
+    expect(c.recomendacoes).toHaveLength(5);
+    // Sem o evento, nada muda.
+    expect(b.funil.some((e) => e.rotulo.startsWith("Começaram"))).toBe(false);
+    // Cadastro que termina bem não vaza.
+    expect(montarBalanco({ ...GN, iniciados: { total: 300, concluidos: 270 } }).funil.find((e) => e.rotulo.startsWith("Começaram"))?.vazou).toBe(false);
+  });
 });

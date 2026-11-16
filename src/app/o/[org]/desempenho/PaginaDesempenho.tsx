@@ -14,6 +14,7 @@ import { carregarLeitura } from "@/lib/leitura/carregar";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
 import { comDias, diaNoFuso, lerDias } from "@/lib/periodo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
+import { contarIniciados } from "@/lib/vendas/iniciados";
 import { carregarLeadsVendas } from "@/lib/vendas/lista";
 import { carregarContextoAcoes, carregarExperiencia, carregarPecas, carregarVelocidade } from "./carregar";
 import { ABAS, DetalheCampanha, type Aba } from "./DetalheCampanha";
@@ -113,7 +114,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
   const assinatura = org.funil === "cadastro_teste_venda";
-  const [pecas, experiencia, velocidade, acoes, leadsVendas, balanco, mensalidade] = await Promise.all([
+  const [pecas, experiencia, velocidade, acoes, leadsVendas, balanco, mensalidade, iniciados] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -130,11 +131,15 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           campanhas: rotaOrg(slug, "/campanhas"),
           vendas: rotaOrg(slug, "/vendas"),
           rastreio: rotaOrg(slug, `/rastreio/${campanha}`),
+          // Públicos ficam em Gerenciar: o atalho só aparece para quem pode criar.
+          publicos: temPapel(papel, "gestor") ? rotaOrg(slug, "/publicos") : null,
         })
       : undefined,
     campanha && aba === "vendas" ? carregarLeadsVendas(supabase, org.id, { campanha, desde: inicioDoDia(de, org.fuso) }) : null,
     campanha && aba === "balanco" && leitura ? carregarBalanco(supabase, org, campanha, leitura) : null,
     assinatura ? carregarMensalidade(supabase, org.id) : null,
+    // Quem começou o cadastro no período (evento opcional cadastro_iniciado): um passo a mais no caminho.
+    campanha && org.funil !== "venda_direta" ? contarIniciados(supabase, org.id, { desde: inicioDoDia(de, org.fuso), campanha }) : null,
   ]);
   // Sem dados no período, o nome vem da leitura dos anúncios; a ponte leva à montagem, se a campanha nasceu aqui.
   const [nomeLido, montadaId] = campanha
@@ -243,6 +248,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           acoes={acoes}
           leadsVendas={leadsVendas}
           balanco={balanco}
+          iniciados={iniciados}
           mensalidade={mensalidade}
           rotasGerenciar={
             gestor

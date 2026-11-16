@@ -5,6 +5,8 @@ import { veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
 import { carregarMensalidade } from "@/lib/payback";
 import type { Leitura } from "@/lib/leitura/modelo";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import { contarIniciados } from "@/lib/vendas/iniciados";
+import { inicioDoDia } from "@/lib/formato";
 import { montarBalanco, type Balanco } from "./modelo";
 
 // Junta os números da campanha inteira (do primeiro dia com gasto até hoje) para o balanço: totais e
@@ -58,6 +60,7 @@ export async function carregarBalanco(supabase: SupabaseClient, org: Org, campan
     else testesEmAberto.push(termina);
   }
 
+  const iniciados = de && org.funil !== "venda_direta" ? await contarIniciados(supabase, org.id, { desde: inicioDoDia(de, org.fuso), campanha: campanhaId }) : null;
   const veiculacao = veiculacaoPelosAnuncios((anuncios ?? []).map((a) => a.status as string | null));
   return montarBalanco({
     funil: org.funil,
@@ -93,5 +96,6 @@ export async function carregarBalanco(supabase: SupabaseClient, org: Org, campan
     achados: leitura.achados,
     marcos: leitura.marcos,
     mensalidade,
+    iniciados,
   });
 }

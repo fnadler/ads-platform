@@ -15,6 +15,7 @@ export const SEGMENTOS = {
   pagantes: "Pagantes (já assinaram ou compraram)",
   teste_sem_pagamento: "Em teste: iniciaram, não pagaram e não cancelaram",
   cadastrados_sem_teste: "Cadastraram e não iniciaram teste nem pagaram",
+  iniciaram_sem_concluir: "Começaram o cadastro e não terminaram",
   todos: "Todos os leads",
 } as const;
 export type Segmento = keyof typeof SEGMENTOS;
@@ -56,6 +57,10 @@ export interface Publico {
   meta_tamanho?: { min?: number; max?: number } | null;
   situacao: string;
 }
+
+/** Endereço de um público do funil já preenchido (atalhos do balanço e da leitura). */
+export const novoPublicoFunil = (base: string, segmento: Segmento, nome: string, dias?: number) =>
+  `${base}/novo?${new URLSearchParams({ tipo: "funil", segmento, nome, ...(dias ? { dias: String(dias) } : {}) })}`;
 
 /** Abaixo disto a Meta não entrega (público personalizado) ou não cria semelhante (origem). */
 export const MINIMO_PERSONALIZADO = 100;

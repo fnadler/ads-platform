@@ -73,3 +73,13 @@ describe("tamanho lido da Meta", () => {
     expect(textoTamanhoMeta(null)).toBeNull();
   });
 });
+
+describe("novoPublicoFunil", () => {
+  it("monta o endereço do público já preenchido", async () => {
+    const { novoPublicoFunil } = await import("./modelo");
+    const url = novoPublicoFunil("/o/gn/publicos", "iniciaram_sem_concluir", "Começaram o cadastro e não terminaram", 30);
+    const q = new URL(url, "https://x").searchParams;
+    expect(url.startsWith("/o/gn/publicos/novo?")).toBe(true);
+    expect(Object.fromEntries(q)).toEqual({ tipo: "funil", segmento: "iniciaram_sem_concluir", nome: "Começaram o cadastro e não terminaram", dias: "30" });
+  });
+});
