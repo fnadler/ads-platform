@@ -12,6 +12,7 @@ import { lerFatos } from "@/lib/onboarding/fatos";
 import { resumoEtapas, telaInicial, telas } from "@/lib/onboarding/modelo";
 import { comDias, intervalo, lerDias } from "@/lib/periodo";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
+import { carregarMensalidade, mesesParaPagar, textoMeses } from "@/lib/payback";
 import { custoPorCadastro, custoPorVenda, melhorEPior, retorno, somarPeriodo, variacao, type CampanhaResumo, type Criterio } from "@/lib/resumo/modelo";
 import { rotaDesempenho, rotaOrg } from "@/lib/rotas";
 import type { Linha } from "./desempenho/soma";
@@ -34,7 +35,13 @@ function Variacao({ v, menorEMelhor, neutro, dias }: { v: number | null; menorEM
 
 const sobe = (v: number | null) => (v === null ? null : v > 0.005 ? "subiu" : v < -0.005 ? "caiu" : "ficou igual");
 
-function FraseCampanha({ c, criterio, moedaOrg }: { c: CampanhaResumo; criterio: Criterio; moedaOrg: string }) {
+function FraseCampanha({ c, criterio, moedaOrg, assinatura }: { c: CampanhaResumo; criterio: Criterio; moedaOrg: string; assinatura: boolean }) {
+  if (criterio === "retorno" && assinatura)
+    return (
+      <>
+        {moeda(c.soma.gasto / c.soma.vendas, moedaOrg)} por assinante · {inteiro(c.soma.vendas)} assinante(s) com {moeda(c.soma.gasto, moedaOrg)} investidos
+      </>
+    );
   return criterio === "retorno" ? (
     <>
       {moeda(retorno(c.soma) ?? 0, moedaOrg)} de volta para cada R$ 1 · {inteiro(c.soma.vendas)} venda(s) com {moeda(c.soma.gasto, moedaOrg)} investidos
@@ -53,7 +60,9 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
   const { org, papel, supabase } = await exigirOrganizacao(slug);
   const gestor = temPapel(papel, "gestor");
   const p = intervalo(dias, org.fuso);
-  const [{ data: sinc }, rastreio, { data: atual }, { data: anterior }, fatos, ativas] = await Promise.all([
+  // Assinatura com teste grátis: o payback (meses de mensalidade) no lugar do retorno do primeiro pagamento.
+  const assinatura = org.funil === "cadastro_teste_venda";
+  const [{ data: sinc }, rastreio, { data: atual }, { data: anterior }, fatos, ativas, mensalidade] = await Promise.all([
     supabase
       .from("sincronizacoes")
       .select("terminado_em")
@@ -68,6 +77,7 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
     supabase.rpc("desempenho_anuncios", { p_org: org.id, p_de: p.deAnterior, p_ate: p.ateAnterior }),
     lerFatos(supabase, org.id, org.onboarding ?? {}),
     campanhasAtivas(supabase, org),
+    assinatura ? carregarMensalidade(supabase, org.id) : null,
   ]);
   const agora = somarPeriodo((atual as Linha[]) ?? []);
   const antes = somarPeriodo((anterior as Linha[]) ?? []);
@@ -106,7 +116,23 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
   // A frase principal e a comparação, em português simples.
   const r = retorno(t);
   let principal: ReactNode;
+  const meses = assinatura ? mesesParaPagar(t.gasto, t.vendas, mensalidade) : null;
+  const mesesAntes = assinatura ? mesesParaPagar(antes.total.gasto, antes.total.vendas, mensalidade) : null;
   if (!t.gasto) principal = <>Nenhum gasto em anúncios nos últimos {dias} dias.</>;
+  else if (t.vendas && assinatura)
+    principal = (
+      <>
+        Você investiu <strong>{moeda(t.gasto, org.moeda)}</strong> e conquistou <strong>{inteiro(t.vendas)} assinante(s)</strong>, a{" "}
+        <strong>{moeda(t.gasto / t.vendas, org.moeda)}</strong> cada
+        {meses !== null ? (
+          <>
+            : cada um se paga em <strong>{textoMeses(meses)}</strong> de mensalidade.
+          </>
+        ) : (
+          "."
+        )}
+      </>
+    );
   else if (t.vendas)
     principal = (
       <>
@@ -131,7 +157,12 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
   const vCusto = variacao(t.vendas ? custoPorVenda(t) : custoPorCadastro(t), antes.total.vendas ? custoPorVenda(antes.total) : custoPorCadastro(antes.total));
   const comparativo =
     t.gasto && antes.total.gasto ? (
-      t.vendas && antes.total.vendas ? (
+      t.vendas && antes.total.vendas && assinatura ? (
+        <>
+          Comparado aos {dias} dias anteriores, o custo por assinante {sobe(vCusto)}
+          {vCusto !== null && Math.abs(vCusto) >= 0.005 ? ` ${pct(Math.abs(vCusto), 0)}` : ""}.
+        </>
+      ) : t.vendas && antes.total.vendas ? (
         <>
           Comparado aos {dias} dias anteriores, o retorno {sobe(vRetorno)}
           {vRetorno !== null && Math.abs(vRetorno) >= 0.005 ? ` ${pct(Math.abs(vRetorno), 0)}` : ""} e o custo por venda {sobe(vCusto)}
@@ -208,13 +239,23 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
               detalhe={<Variacao v={variacao(custoPorVenda(t), custoPorVenda(antes.total))} menorEMelhor dias={dias} />}
               destaque
             />
-            <Indicador
-              rotulo="De volta para cada R$ 1"
-              explica="retorno"
-              valor={r === null ? "—" : moeda(r, org.moeda)}
-              detalhe={r === null ? undefined : <Variacao v={vRetorno} dias={dias} />}
-              destaque
-            />
+            {assinatura ? (
+              <Indicador
+                rotulo="Cada assinante se paga em"
+                explica="payback"
+                valor={meses === null ? "—" : textoMeses(meses)}
+                detalhe={meses === null ? (mensalidade ? "sem assinante no período" : "sem pagamento recebido ainda") : <Variacao v={variacao(meses, mesesAntes)} menorEMelhor dias={dias} />}
+                destaque
+              />
+            ) : (
+              <Indicador
+                rotulo="De volta para cada R$ 1"
+                explica="retorno"
+                valor={r === null ? "—" : moeda(r, org.moeda)}
+                detalhe={r === null ? undefined : <Variacao v={vRetorno} dias={dias} />}
+                destaque
+              />
+            )}
           </Indicadores>
         )}
 
@@ -225,7 +266,7 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
                 {comparacao.melhor.nome}
               </Link>
               <p className="mt-1 text-sm text-ink-2">
-                <FraseCampanha c={comparacao.melhor} criterio={comparacao.criterio} moedaOrg={org.moeda} />
+                <FraseCampanha c={comparacao.melhor} criterio={comparacao.criterio} moedaOrg={org.moeda} assinatura={assinatura} />
               </p>
             </Cartao>
             {comparacao.pior && (
@@ -237,7 +278,7 @@ export default async function Resumo({ params, searchParams }: PageProps<"/o/[or
                   {comparacao.pior.nome}
                 </Link>
                 <p className="mt-1 text-sm text-ink-2">
-                  <FraseCampanha c={comparacao.pior} criterio={comparacao.criterio} moedaOrg={org.moeda} />
+                  <FraseCampanha c={comparacao.pior} criterio={comparacao.criterio} moedaOrg={org.moeda} assinatura={assinatura} />
                 </p>
               </Cartao>
             )}

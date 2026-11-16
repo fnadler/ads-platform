@@ -7,6 +7,7 @@
 
 import { decimal, inteiro, moeda, pct } from "@/lib/formato";
 import type { Achado, MarcoComEfeito } from "@/lib/leitura/modelo";
+import { mesesParaPagar, textoMeses } from "@/lib/payback";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 
 export interface AnuncioBalanco {
@@ -47,6 +48,8 @@ export interface EntradaBalanco {
   testesEmAberto: string[];
   achados: Achado[];
   marcos: MarcoComEfeito[];
+  /** Assinatura: a mensalidade (mediana dos pagamentos), para o payback. */
+  mensalidade?: number | null;
 }
 
 export type TomItem = "bom" | "ruim" | "neutro";
@@ -165,8 +168,15 @@ export function montarBalanco(e: EntradaBalanco): Balanco {
   // Resultado em frases.
   // Em assinatura, o retorno do primeiro pagamento não representa o resultado (cada cliente paga todo mês).
   const retorno = e.funil === "cadastro_teste_venda" ? null : div(t.receita, t.gasto);
+  // Assinatura: em quantos meses de mensalidade cada assinante paga o que custou.
+  const assinatura = e.funil === "cadastro_teste_venda";
+  const meses = assinatura ? mesesParaPagar(t.gasto, t.vendas, e.mensalidade ?? null) : null;
   const frase =
-    t.vendas > 0
+    assinatura && t.vendas > 0
+      ? `Foram investidos ${r(t.gasto)} e vieram ${plural(t.vendas, "assinante", "assinantes")}: ${r(t.gasto / t.vendas)} por assinante${
+          meses !== null ? `, que se paga em ${textoMeses(meses)} de mensalidade (${r(e.mensalidade!)})` : ""
+        }.`
+      : t.vendas > 0
       ? `Foram investidos ${r(t.gasto)} e vieram ${plural(t.vendas, "venda", "vendas")} (${r(t.receita)}): ${r(t.gasto / t.vendas)} por venda${retorno !== null ? `, ${r(retorno)} de volta para cada R$ 1 no primeiro pagamento` : ""}.`
       : t.leads > 0
         ? `Foram investidos ${r(t.gasto)} e vieram ${plural(t.leads, "cadastro", "cadastros")}, a ${r(t.gasto / t.leads)} cada. Nenhuma venda confirmada ainda.`
@@ -177,6 +187,7 @@ export function montarBalanco(e: EntradaBalanco): Balanco {
     ...(e.funil === "cadastro_teste_venda" ? [{ rotulo: "Testes grátis", valor: inteiro(t.testes), detalhe: t.testes ? `${r(t.gasto / t.testes)} cada` : undefined }] : []),
     { rotulo: "Vendas", valor: inteiro(t.vendas), detalhe: t.vendas ? `${r(t.gasto / t.vendas)} cada` : undefined },
     { rotulo: "Recebido", valor: r(t.receita), detalhe: retorno !== null && t.receita ? `${decimal(retorno, 2)} de retorno` : undefined },
+    ...(meses !== null ? [{ rotulo: "Cada assinante se paga em", valor: textoMeses(meses), detalhe: `de mensalidade (${r(e.mensalidade!)})` }] : []),
   ];
 
   const etapas = funil(e);
@@ -214,7 +225,11 @@ export function montarBalanco(e: EntradaBalanco): Balanco {
     emAberto.push(
       `${plural(e.testesEmAberto.length, "teste grátis ainda está", "testes grátis ainda estão")} em andamento: o último termina em ${ddmm(ultimo)}. ${
         taxa !== null ? `Se pagarem como os anteriores (${pct(taxa, 0)}), ${inteiro(Math.round(e.testesEmAberto.length * taxa))} viram vendas.` : ""
-      } O veredito da campanha sai em ${ddmm(ultimo)}: decida a verba da próxima etapa depois dele.`,
+      }${(() => {
+        const projetadas = taxa !== null ? t.vendas + Math.round(e.testesEmAberto.length * taxa) : 0;
+        const m2 = assinatura && projetadas > t.vendas ? mesesParaPagar(t.gasto, projetadas, e.mensalidade ?? null) : null;
+        return m2 !== null ? ` Com eles, cada assinante sai a ${r(t.gasto / projetadas)} e se paga em ${textoMeses(m2)}.` : "";
+      })()} O veredito da campanha sai em ${ddmm(ultimo)}: decida a verba da próxima etapa depois dele.`,
     );
   }
 

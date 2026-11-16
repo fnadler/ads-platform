@@ -2,7 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import { criarClienteAdmin } from "@/lib/supabase/admin";
-import { efeitoDoMarco, marcosDeOperacoes, type GastoAnuncioDia, type OperacaoMeta } from "./marcos";
+import { caminho } from "@/lib/clarity/campanha";
+import { efeitoDoMarco, marcosDeOperacoes, marcosDePagina, type GastoAnuncioDia, type OperacaoMeta, type TestePagina } from "./marcos";
 import { lerCampanha, type AnuncioResumo, type DiaCampanha, type DiaClarity, type Leitura } from "./modelo";
 
 // Junta, com o cliente da sessão (RLS de membro), os números que a leitura da campanha usa: mídia por
@@ -80,7 +81,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
       .eq("validacao", false)
       .gte("criado_em", inicio)
       .order("criado_em"),
-    supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name, titulo, texto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
+    supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name, titulo, texto, status, destinos").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
     // Vendas pagas ligadas a cada anúncio (o anúncio da venda, ou o do cadastro de origem).
     supabase.from("vendas_atribuidas").select("ad_id").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).eq("tipo", "pagamento").gte("ocorrida_em", inicio),
   ]);
@@ -132,7 +133,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
 
   // Marcos: cada mudança feita na campanha, com o antes e depois (gasto por anúncio e cadastros por dia).
   const gastos: GastoAnuncioDia[] = (porAnuncio ?? []).map((m) => ({ dia: m.dia as string, ad_id: m.ad_id, gasto: n(m.gasto) }));
-  const resultados = [...dias.values()].map((d) => ({ dia: d.dia, gasto: d.gasto, leads: d.leads }));
+  const resultados = [...dias.values()].map((d) => ({ dia: d.dia, gasto: d.gasto, leads: d.leads, visitas: d.visualizacoes_pagina, leadsMeta: d.leads_meta }));
   const nomesAnuncios = new Map<string, string>();
   const nomesConjuntos = new Map<string, string>();
   for (const a of lidos ?? []) {
@@ -140,10 +141,30 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     if (a.adset_id) nomesConjuntos.set(a.adset_id, a.adset_name ?? a.adset_id);
   }
   for (const a of anuncios.values()) if (!nomesAnuncios.has(a.ad_id)) nomesAnuncios.set(a.ad_id, a.nome);
-  const marcos = marcosDeOperacoes((ops ?? []) as OperacaoMeta[], { campanhaId, anuncios: nomesAnuncios, conjuntos: nomesConjuntos }, org.fuso, org.moeda).map((m) => ({
-    ...m,
-    efeito: efeitoDoMarco(m, gastos, resultados, hoje),
-  }));
+  // Página principal da campanha (o destino dos anúncios ativos) e os testes diários dela: mudanças na página.
+  const destinos = new Map<string, number>();
+  for (const a of lidos ?? [])
+    for (const d of (a.destinos as string[] | null) ?? []) {
+      const k = caminho(d);
+      if (k) destinos.set(k, (destinos.get(k) ?? 0) + (a.status === "ACTIVE" ? 10 : 1));
+    }
+  const [principal] = [...destinos].sort((a, b) => b[1] - a[1]);
+  const { data: testesPagina } = principal
+    ? await supabase
+        .from("pagina_testes")
+        .select("testado_em, resumo")
+        .eq("organizacao_id", org.id)
+        .eq("chave", principal[0])
+        .eq("estrategia", "mobile")
+        .gte("testado_em", new Date(Date.now() - (JANELA_DIAS + 7) * 86_400_000).toISOString())
+        .order("testado_em")
+    : { data: [] };
+  const marcos = [
+    ...marcosDeOperacoes((ops ?? []) as OperacaoMeta[], { campanhaId, anuncios: nomesAnuncios, conjuntos: nomesConjuntos }, org.fuso, org.moeda),
+    ...marcosDePagina((testesPagina ?? []) as TestePagina[], org.fuso).filter((m) => m.em >= inicio),
+  ]
+    .sort((a, b) => a.em.localeCompare(b.em))
+    .map((m) => ({ ...m, efeito: efeitoDoMarco(m, gastos, resultados, hoje) }));
 
   // Vendas, título e texto por anúncio (vencedor por venda e o roteiro das variações).
   for (const v of pagas ?? []) if (v.ad_id) anuncio(v.ad_id).vendas = (anuncio(v.ad_id).vendas ?? 0) + 1;

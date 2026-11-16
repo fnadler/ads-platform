@@ -194,8 +194,8 @@ describe("lerCampanha — verba que mudou de anúncio (caso GN, 08/11)", () => {
     adId: "c",
     usuarioId: null,
     efeito: {
-      antes: { dias: 3, gasto: 142.85, leads: 32, fatias: [] },
-      depois: { dias: 3, gasto: 130.09, leads: 36, fatias: [] },
+      antes: { dias: 3, gasto: 142.85, leads: 32, visitas: 333, leadsMeta: 51, fatias: [] },
+      depois: { dias: 3, gasto: 130.09, leads: 36, visitas: 243, leadsMeta: 48, fatias: [] },
       ganhou: { adId: "d", de: 0.2, para: 0.58 },
       perdeu: { adId: "b", de: 0.73, para: 0.35 },
     },

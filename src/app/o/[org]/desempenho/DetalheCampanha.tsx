@@ -16,6 +16,7 @@ import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import type { Balanco, Recomendacao } from "@/lib/balanco/modelo";
+import { mesesParaPagar, textoMeses } from "@/lib/payback";
 import type { LeadsVendas } from "@/lib/vendas/lista";
 import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
 import { Termo } from "@/components/Termo";
@@ -70,6 +71,8 @@ export interface DadosDetalhe {
   fuso: string;
   /** Cadastros e vendas (organização) já filtrado nesta campanha. */
   rotaVendas: string;
+  /** Assinatura: mensalidade (mediana dos pagamentos), para o payback no lugar do retorno. */
+  mensalidade?: number | null;
   /** Balanço da campanha inteira (só na aba Balanço). */
   balanco?: Balanco | null;
   /** Para onde levam as recomendações do balanço (só para gestor; quem só lê não tem Gerenciar). */
@@ -111,6 +114,35 @@ export function DetalheCampanha(d: DadosDetalhe) {
       {d.aba === "vendas" && <AbaVendas {...d} />}
       {d.aba === "balanco" && <AbaBalanco {...d} />}
     </div>
+  );
+}
+
+/**
+ * Retorno da campanha. Em assinatura com teste grátis, o retorno do primeiro pagamento engana: mostra em quantos
+ * meses de mensalidade cada assinante paga o que custou.
+ */
+function IndicadorRetorno({ d }: { d: DadosDetalhe }) {
+  const t = d.total;
+  if (d.funil === "cadastro_teste_venda") {
+    const meses = mesesParaPagar(t.gasto, t.vendas, d.mensalidade ?? null);
+    return (
+      <Indicador
+        rotulo="Cada assinante se paga em"
+        explica="payback"
+        valor={meses === null ? "—" : textoMeses(meses)}
+        detalhe={meses !== null && d.mensalidade ? `de mensalidade (${moeda(d.mensalidade, d.moeda)})` : t.vendas ? "sem pagamento recebido ainda" : "sem assinante no período"}
+        destaque
+      />
+    );
+  }
+  return (
+    <Indicador
+      rotulo="Retorno"
+      explica="retorno"
+      valor={roas(t.receita, t.gasto)}
+      detalhe={t.receita ? `${moeda(razao(t.receita, t.gasto), d.moeda)} de volta para cada R$ 1` : "quanto volta em vendas para cada R$ 1"}
+      destaque
+    />
   );
 }
 
@@ -323,13 +355,7 @@ function AbaGeral(d: DadosDetalhe) {
           }
           destaque
         />
-        <Indicador
-          rotulo="Retorno"
-          explica="retorno"
-          valor={roas(t.receita, t.gasto)}
-          detalhe={t.receita ? `${moeda(razao(t.receita, t.gasto), d.moeda)} de volta para cada R$ 1` : "quanto volta em vendas para cada R$ 1"}
-          destaque
-        />
+        <IndicadorRetorno d={d} />
       </Indicadores>
 
       {achados.length ? (
@@ -358,8 +384,8 @@ function OQueMudou({ d }: { d: DadosDetalhe }) {
   return (
     <Secao titulo="O que mudou">
       <p className="-mt-1 max-w-3xl text-sm text-ink-2">
-        Cada mudança na campanha faz a Meta redistribuir a verba entre os anúncios, e nem sempre para o melhor. Aqui ficam as mudanças dos últimos 30 dias, com até 3 dias
-        antes e 3 depois de cada uma.
+        Cada mudança na campanha faz a Meta redistribuir a verba entre os anúncios, e nem sempre para o melhor; mudar a página muda quantos visitantes se
+        cadastram. Aqui ficam as mudanças dos últimos 30 dias, com até 3 dias antes e 3 depois de cada uma.
       </p>
       <ol className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
         {marcos.map((m) => {
@@ -376,7 +402,13 @@ function OQueMudou({ d }: { d: DadosDetalhe }) {
                     Cadastros por dia: {f(porDia(antes), (v) => decimal(v, 1))} → <strong className="text-ink">{f(porDia(depois), (v) => decimal(v, 1))}</strong> · custo por
                     cadastro: {f(custo(antes), (v) => moeda(v, d.moeda))} → <strong className="text-ink">{f(custo(depois), (v) => moeda(v, d.moeda))}</strong>
                   </span>
-                  {(ganhou || perdeu) && (
+                  {m.tipo === "pagina" && (
+                    <span>
+                      Das visitas, se cadastraram: {f(antes.visitas ? antes.leadsMeta / antes.visitas : null, (v) => pct(v, 0))} →{" "}
+                      <strong className="text-ink">{f(depois.visitas ? depois.leadsMeta / depois.visitas : null, (v) => pct(v, 0))}</strong>
+                    </span>
+                  )}
+                  {m.tipo !== "pagina" && (ganhou || perdeu) && (
                     <span className="[overflow-wrap:anywhere]">
                       Verba:{" "}
                       {[ganhou, perdeu]
@@ -958,13 +990,7 @@ function AbaVendas(d: DadosDetalhe) {
         )}
         <Indicador rotulo="Vendas" valor={inteiro(t.vendas)} detalhe={t.receita ? `${moeda(t.receita, d.moeda)} recebidos` : "pagamentos confirmados"} explica="vendas" />
         <Indicador rotulo="Custo por venda" valor={moeda(razao(t.gasto, t.vendas), d.moeda)} detalhe="investido ÷ vendas" explica="custoVenda" destaque />
-        <Indicador
-          rotulo="Retorno"
-          explica="retorno"
-          valor={roas(t.receita, t.gasto)}
-          detalhe={t.receita ? `${moeda(razao(t.receita, t.gasto), d.moeda)} de volta para cada R$ 1` : undefined}
-          destaque
-        />
+        <IndicadorRetorno d={d} />
       </Indicadores>
       <SugestoesDaArea
         achados={achados}
@@ -1096,7 +1122,7 @@ function AbaBalanco(d: DadosDetalhe) {
         <p className="text-sm text-chrome-ink-2">A campanha inteira, do primeiro ao último dia com gasto (o período escolhido acima não muda este balanço).</p>
       </section>
 
-      <Indicadores className={`grid-cols-2 ${b.numeros.length >= 5 ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+      <Indicadores className={`grid-cols-2 ${b.numeros.length >= 6 ? "xl:grid-cols-6" : b.numeros.length === 5 ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         {b.numeros.map((n) => (
           <Indicador key={n.rotulo} rotulo={n.rotulo} valor={n.valor} detalhe={n.detalhe} />
         ))}

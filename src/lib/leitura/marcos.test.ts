@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { efeitoDoMarco, marcosDeOperacoes, type OperacaoMeta } from "./marcos";
+import { efeitoDoMarco, marcosDeOperacoes, marcosDePagina, type OperacaoMeta } from "./marcos";
 
 // Caso real: GN Coleciona, campanha "GN | Cadastro Loja | A1 ganchos" (nov/2026).
 const CAMP = "120248425685830436";
@@ -136,5 +136,28 @@ describe("efeitoDoMarco — a pausa de 08/11 tirou a verba do anúncio que vendi
   it("depois do último dia completo não inventa dados", () => {
     const recente = efeitoDoMarco({ ...pausa, dia: "2026-11-11" }, GASTOS, RESULTADOS, "2026-11-12");
     expect(recente.depois.dias).toBe(0);
+  });
+});
+
+describe("marcosDePagina", () => {
+  const t = (testado_em: string, elemento: string | null, altura: number | null) => ({ testado_em, resumo: { lcp: { elemento }, pagina: altura ? { altura } : null } });
+
+  it("marca quando o primeiro bloco muda de texto", () => {
+    const m = marcosDePagina(
+      [t("2026-11-05T09:00:00Z", "Organize sua coleção e saiba o que falta", 8000), t("2026-11-06T09:00:00Z", "Marque grátis as 994 figurinhas do álbum da Copa 2026…", 9270)],
+      "America/Sao_Paulo",
+    );
+    expect(m).toHaveLength(1);
+    expect(m[0].tipo).toBe("pagina");
+    expect(m[0].dia).toBe("2026-11-06");
+    expect(m[0].rotulo).toBe("A página mudou: o primeiro bloco agora diz “Marque grátis as 994 figurinhas do álbum da Copa 2026”");
+  });
+
+  it("marca quando a página fica bem mais longa, e ignora variação pequena e o “…” do corte", () => {
+    const m = marcosDePagina(
+      [t("2026-11-10T09:00:00Z", "Marque grátis…", 8000), t("2026-11-11T09:00:00Z", "Marque grátis", 8300), t("2026-11-12T09:00:00Z", "Marque grátis", 9800)],
+      "America/Sao_Paulo",
+    );
+    expect(m.map((x) => x.rotulo)).toEqual(["A página ficou 18% mais longa"]);
   });
 });

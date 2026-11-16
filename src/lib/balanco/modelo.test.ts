@@ -30,14 +30,17 @@ const GN: EntradaBalanco = {
     achado("redistribuicao-x", { titulo: "Depois que você pausou “A1 | C Digitando” em 08/11, a Meta passou a gastar 58% em “A1 | D Como Vender”" }),
   ],
   marcos: [],
+  mensalidade: 19.9,
 };
 
 describe("montarBalanco — caso GN", () => {
   const b = montarBalanco(GN);
 
-  it("resume o resultado em uma frase", () => {
-    expect(b.frase).toContain("6 vendas");
-    expect(b.frase.replace(/\u00a0/g, " ")).toContain("R$ 118,66 por venda");
+  it("resume o resultado em uma frase, com o payback da assinatura", () => {
+    expect(b.frase).toContain("6 assinantes");
+    expect(b.frase).toContain("se paga em cerca de 6 meses de mensalidade");
+    expect(b.frase.replace(/\u00a0/g, " ")).toContain("R$ 118,66 por assinante");
+    expect(b.numeros.at(-1)).toMatchObject({ rotulo: "Cada assinante se paga em", valor: "cerca de 6 meses" });
     expect(b.periodo).toBe("01/11 a 16/11 · 16 dias");
   });
 
@@ -56,6 +59,7 @@ describe("montarBalanco — caso GN", () => {
     expect(b.emAberto[0]).toContain("12 testes grátis ainda estão em andamento");
     expect(b.emAberto[0]).toContain("23/11");
     expect(b.emAberto[0]).toContain("5 viram vendas");
+    expect(b.emAberto[0]).toContain("se paga em cerca de 3 meses");
   });
 
   it("recomenda o mesmo que a análise manual, na ordem de impacto", () => {

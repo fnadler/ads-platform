@@ -14,6 +14,7 @@ export const GLOSSARIO = {
   recebido: "Soma das vendas que vieram dos anúncios, já descontando reembolso e chargeback.",
   custoVenda: "Investido dividido pelas vendas. Quanto custou, em média, cada venda.",
   retorno: "Quanto voltou em vendas para cada R$ 1 investido (o ROAS). Acima de 1, os anúncios pagam o que custam.",
+  payback: "Em assinatura, o primeiro pagamento não paga o anúncio: cada assinante paga todo mês. Isto diz quantos meses de mensalidade cada um leva para pagar o que custou no anúncio.",
   impressoes: "Quantas vezes os anúncios apareceram na tela de alguém.",
   frequencia: "Quantas vezes, em média, a mesma pessoa viu os anúncios. Muito alta cansa o público.",
   ctr: "De cada 100 vezes que o anúncio apareceu, quantas viraram clique no link (taxa de cliques).",

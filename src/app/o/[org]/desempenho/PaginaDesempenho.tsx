@@ -9,6 +9,7 @@ import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { campanhaMontada } from "@/lib/campanhas/lista";
 import { decimal, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
 import { carregarBalanco } from "@/lib/balanco/carregar";
+import { carregarMensalidade, mesesParaPagar, textoMeses } from "@/lib/payback";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
 import { comDias, diaNoFuso, lerDias } from "@/lib/periodo";
@@ -111,7 +112,8 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
     return `${rotaDesempenho(slug, tudo.campanha ? String(tudo.campanha) : null)}${q.size ? `?${q}` : ""}`;
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
-  const [pecas, experiencia, velocidade, acoes, leadsVendas, balanco] = await Promise.all([
+  const assinatura = org.funil === "cadastro_teste_venda";
+  const [pecas, experiencia, velocidade, acoes, leadsVendas, balanco, mensalidade] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -132,6 +134,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
       : undefined,
     campanha && aba === "vendas" ? carregarLeadsVendas(supabase, org.id, { campanha, desde: inicioDoDia(de, org.fuso) }) : null,
     campanha && aba === "balanco" && leitura ? carregarBalanco(supabase, org, campanha, leitura) : null,
+    assinatura ? carregarMensalidade(supabase, org.id) : null,
   ]);
   // Sem dados no período, o nome vem da leitura dos anúncios; a ponte leva à montagem, se a campanha nasceu aqui.
   const [nomeLido, montadaId] = campanha
@@ -240,6 +243,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           acoes={acoes}
           leadsVendas={leadsVendas}
           balanco={balanco}
+          mensalidade={mensalidade}
           rotasGerenciar={
             gestor
               ? {
@@ -279,13 +283,26 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
             )}
             <Indicador rotulo="Vendas" valor={inteiro(total.vendas)} detalhe={total.receita ? `${moeda(total.receita, org.moeda)} recebidos` : undefined} explica="vendas" />
             <Indicador rotulo="Custo por venda" valor={moeda(razao(total.gasto, total.vendas), org.moeda)} detalhe="investido ÷ vendas" explica="custoVenda" destaque />
-            <Indicador
-              rotulo="Retorno"
-              explica="retorno"
-              valor={roas(total.receita, total.gasto)}
-              detalhe={total.receita ? `${moeda(razao(total.receita, total.gasto), org.moeda)} de volta para cada R$ 1` : undefined}
-              destaque
-            />
+            {assinatura ? (
+              <Indicador
+                rotulo="Cada assinante se paga em"
+                explica="payback"
+                valor={(() => {
+                  const meses = mesesParaPagar(total.gasto, total.vendas, mensalidade);
+                  return meses === null ? "—" : textoMeses(meses);
+                })()}
+                detalhe={mensalidade ? `de mensalidade (${moeda(mensalidade, org.moeda)})` : "sem pagamento recebido ainda"}
+                destaque
+              />
+            ) : (
+              <Indicador
+                rotulo="Retorno"
+                explica="retorno"
+                valor={roas(total.receita, total.gasto)}
+                detalhe={total.receita ? `${moeda(razao(total.receita, total.gasto), org.moeda)} de volta para cada R$ 1` : undefined}
+                destaque
+              />
+            )}
           </Indicadores>
 
           <SoComDetalhes className="grid gap-5">

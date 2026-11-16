@@ -16,7 +16,18 @@ export interface OperacaoMeta {
   usuario_id: string | null;
 }
 
-export type TipoMarco = "criada" | "ativada" | "pausa_campanha" | "retomada_campanha" | "pausa_anuncio" | "retomada_anuncio" | "pausa_conjunto" | "retomada_conjunto" | "verba" | "teste_anuncios";
+export type TipoMarco =
+  | "criada"
+  | "ativada"
+  | "pausa_campanha"
+  | "retomada_campanha"
+  | "pausa_anuncio"
+  | "retomada_anuncio"
+  | "pausa_conjunto"
+  | "retomada_conjunto"
+  | "verba"
+  | "teste_anuncios"
+  | "pagina";
 
 export interface Marco {
   /** Momento da operação (ISO). */
@@ -104,6 +115,42 @@ export function marcosDeOperacoes(ops: OperacaoMeta[], nomes: NomesCampanha, fus
   return marcos;
 }
 
+// ───────────────────────────── A página que mudou ─────────────────────────────
+
+/** O que o teste diário de velocidade guarda da página (versão de celular). */
+export interface TestePagina {
+  testado_em: string;
+  resumo: { lcp?: { elemento?: string | null } | null; pagina?: { altura: number } | null } | null;
+}
+
+const texto = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").replace(/…$/, "").trim();
+
+/**
+ * Marcos de mudança na página de destino, comparando um teste diário com o anterior: o primeiro bloco da tela
+ * (o maior elemento visível ao abrir) com outro texto, ou a página 15% ou mais mais longa ou mais curta.
+ * Caso GN: a abertura da página mudou em 06/11 (foco na Copa 2026) — quem não vê isso atribui a queda ao anúncio.
+ */
+export function marcosDePagina(testes: TestePagina[], fuso: string): Marco[] {
+  const lista = [...testes].sort((a, b) => a.testado_em.localeCompare(b.testado_em));
+  const marcos: Marco[] = [];
+  for (let i = 1; i < lista.length; i++) {
+    const antes = lista[i - 1].resumo;
+    const agora = lista[i].resumo;
+    const em = lista[i].testado_em;
+    const ta = texto(antes?.lcp?.elemento);
+    const tb = texto(agora?.lcp?.elemento);
+    let rotulo: string | null = null;
+    if (ta && tb && ta !== tb) rotulo = `A página mudou: o primeiro bloco agora diz “${tb.length > 70 ? `${tb.slice(0, 70)}…` : tb}”`;
+    else {
+      const ha = antes?.pagina?.altura;
+      const hb = agora?.pagina?.altura;
+      if (ha && hb && Math.abs(hb / ha - 1) >= 0.15) rotulo = `A página ficou ${Math.round(Math.abs(hb / ha - 1) * 100)}% mais ${hb > ha ? "longa" : "curta"}`;
+    }
+    if (rotulo) marcos.push({ em, dia: diaNoFuso(em, fuso), tipo: "pagina", rotulo, usuarioId: null });
+  }
+  return marcos;
+}
+
 // ───────────────────────────── Antes e depois ─────────────────────────────
 
 export interface GastoAnuncioDia {
@@ -117,12 +164,17 @@ export interface DiaResultado {
   gasto: number;
   /** Cadastros que chegaram ao sistema, pelo dia do cadastro. */
   leads: number;
+  /** Visitas à página e cadastros que a Meta conta (conversão da página, para marcos de página). */
+  visitas?: number;
+  leadsMeta?: number;
 }
 
 export interface Lado {
   dias: number;
   gasto: number;
   leads: number;
+  visitas: number;
+  leadsMeta: number;
   /** Fatia da verba de cada anúncio (0 a 1), maiores primeiro. */
   fatias: Array<{ adId: string; fatia: number }>;
 }
@@ -153,6 +205,8 @@ function lado(dias: string[], gastos: GastoAnuncioDia[], resultados: DiaResultad
     dias: r.filter((x) => x.gasto > 0).length,
     gasto,
     leads: r.reduce((s, x) => s + x.leads, 0),
+    visitas: r.reduce((s, x) => s + (x.visitas ?? 0), 0),
+    leadsMeta: r.reduce((s, x) => s + (x.leadsMeta ?? 0), 0),
     fatias: [...porAnuncio]
       .map(([adId, v]) => ({ adId, fatia: totalAnuncios ? v / totalAnuncios : 0 }))
       .filter((f) => f.fatia > 0)

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { somar, zero, type Linha } from "@/app/o/[org]/desempenho/soma";
 import { veiculacaoPelosAnuncios } from "@/lib/campanhas/veiculacao";
+import { carregarMensalidade } from "@/lib/payback";
 import type { Leitura } from "@/lib/leitura/modelo";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
 import { montarBalanco, type Balanco } from "./modelo";
@@ -21,7 +22,7 @@ const diaNoFuso = (iso: string, fuso: string) => new Date(iso).toLocaleDateStrin
 
 export async function carregarBalanco(supabase: SupabaseClient, org: Org, campanhaId: string, leitura: Leitura): Promise<Balanco> {
   const hoje = diaNoFuso(new Date().toISOString(), org.fuso);
-  const [{ data: diasGasto }, { data: anuncios }, { data: leads }] = await Promise.all([
+  const [{ data: diasGasto }, { data: anuncios }, { data: leads }, mensalidade] = await Promise.all([
     supabase.from("meta_campanha_dia").select("dia").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).gt("gasto", 0).order("dia"),
     supabase.from("meta_anuncios").select("status").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
     supabase
@@ -31,6 +32,7 @@ export async function carregarBalanco(supabase: SupabaseClient, org: Org, campan
       .eq("campaign_id", campanhaId)
       .is("codigo_teste", null)
       .not("teste_iniciado_em", "is", null),
+    org.funil === "cadastro_teste_venda" ? carregarMensalidade(supabase, org.id) : null,
   ]);
   const de = diasGasto?.[0]?.dia ?? null;
   const ate = diasGasto?.at(-1)?.dia ?? null;
@@ -90,5 +92,6 @@ export async function carregarBalanco(supabase: SupabaseClient, org: Org, campan
     testesEmAberto,
     achados: leitura.achados,
     marcos: leitura.marcos,
+    mensalidade,
   });
 }
