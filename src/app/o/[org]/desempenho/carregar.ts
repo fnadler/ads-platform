@@ -154,7 +154,19 @@ export interface ContextoAcoes {
   teto: number;
   orcamento: { tipo: "total" | "diario"; valor: number; fim: string | null; gasto: number } | null;
   custoPorMil: number | null;
-  anuncios: Array<{ id: string; nome: string; impressoes: number; ativo: boolean; daPlataforma: boolean }>;
+  anuncios: Array<{
+    id: string;
+    nome: string;
+    impressoes: number;
+    ativo: boolean;
+    daPlataforma: boolean;
+    /** Fatia da verba nos últimos 3 dias completos (0 a 1), para dizer para onde a verba vai ao pausar. */
+    fatiaRecente: number;
+    gasto: number;
+    leads: number;
+    testes: number;
+    vendas: number;
+  }>;
   /** Para os atalhos das sugestões. */
   rotas: { configuracoes: string; campanhas: string; vendas: string; rastreio: string };
   projetoClarity: string | null;
@@ -166,15 +178,21 @@ export async function carregarContextoAcoes(
   org: { id: string; moeda: string; fuso: string },
   campanhaId: string,
   podeEditar: boolean,
-  linhas: Array<{ ad_id: string; ad_name: string | null; impressoes: number; gasto: number; status: string | null }>,
+  linhas: Array<{ ad_id: string; ad_name: string | null; impressoes: number; gasto: number; status: string | null; leads?: number; testes?: number; vendas?: number }>,
   rotas: ContextoAcoes["rotas"],
 ): Promise<ContextoAcoes> {
-  const [{ data: campanha }, { data: config }, { data: gastos }, { data: clarity }] = await Promise.all([
+  // Últimos 3 dias completos (hoje ainda está em andamento): a divisão de verba que a Meta pratica agora.
+  const dia = (n: number) => new Date(Date.now() - n * 86_400_000).toLocaleDateString("sv-SE", { timeZone: org.fuso });
+  const [{ data: campanha }, { data: config }, { data: gastos }, { data: clarity }, { data: recentes }] = await Promise.all([
     supabase.from("campanhas_assistente").select("id, nome, status, rascunho").eq("organizacao_id", org.id).eq("meta_campaign_id", campanhaId).maybeSingle(),
     supabase.from("config_publicacao").select("teto_verba_diaria").eq("organizacao_id", org.id).maybeSingle(),
     supabase.from("meta_campanha_dia").select("gasto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
     supabase.from("conexoes").select("config").eq("organizacao_id", org.id).eq("tipo", "clarity").eq("status", "ativa").maybeSingle(),
+    supabase.from("meta_anuncio_dia").select("ad_id, gasto").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).gte("dia", dia(3)).lte("dia", dia(1)),
   ]);
+  const gastoRecente = new Map<string, number>();
+  for (const g of recentes ?? []) gastoRecente.set(g.ad_id, (gastoRecente.get(g.ad_id) ?? 0) + Number(g.gasto));
+  const totalRecente = [...gastoRecente.values()].reduce((s, v) => s + v, 0);
   const { data: daPlataforma } = campanha
     ? await supabase
         .from("anuncios_assistente")
@@ -216,6 +234,17 @@ export async function carregarContextoAcoes(
     custoPorMil: impressoes ? (gastoPeriodo * 1000) / impressoes : null,
     rotas,
     projetoClarity: ((clarity?.config as { projeto_id?: string } | null)?.projeto_id as string) ?? null,
-    anuncios: linhas.map((l) => ({ id: l.ad_id, nome: l.ad_name ?? l.ad_id, impressoes: Number(l.impressoes), ativo: l.status === "ACTIVE", daPlataforma: nossos.has(l.ad_id) })),
+    anuncios: linhas.map((l) => ({
+      id: l.ad_id,
+      nome: l.ad_name ?? l.ad_id,
+      impressoes: Number(l.impressoes),
+      ativo: l.status === "ACTIVE",
+      daPlataforma: nossos.has(l.ad_id),
+      fatiaRecente: totalRecente ? (gastoRecente.get(l.ad_id) ?? 0) / totalRecente : 0,
+      gasto: Number(l.gasto),
+      leads: Number(l.leads ?? 0),
+      testes: Number(l.testes ?? 0),
+      vendas: Number(l.vendas ?? 0),
+    })),
   };
 }

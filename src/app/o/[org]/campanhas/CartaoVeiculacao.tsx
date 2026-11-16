@@ -95,6 +95,10 @@ export async function CartaoVeiculacao({
             className="flex flex-col gap-3"
           >
             {campos}
+            <p className="text-ink-2">
+              <strong className="text-ink">Antes de pausar:</strong> pausar e retomar faz a Meta recomeçar o aprendizado, e os primeiros dias depois da volta costumam
+              custar mais. Se o motivo é verba, reduzir a verba diária mantém o aprendizado.
+            </p>
           </Formulario>
         ) : veiculacao === "pausada" ? (
           <Formulario acao={reativarCampanha} rotulo="Reativar campanha" variante="peso" className="flex flex-col gap-3 rounded-lg border border-line bg-surface-2 p-4">

@@ -1,10 +1,14 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import { criarClienteAdmin } from "@/lib/supabase/admin";
+import { efeitoDoMarco, marcosDeOperacoes, type GastoAnuncioDia, type OperacaoMeta } from "./marcos";
 import { lerCampanha, type AnuncioResumo, type DiaCampanha, type DiaClarity, type Leitura } from "./modelo";
 
 // Junta, com o cliente da sessão (RLS de membro), os números que a leitura da campanha usa: mídia por
-// dia, leads e testes pelo dia do cadastro, totais por anúncio, testes em andamento e o Clarity.
+// dia, leads e testes pelo dia do cadastro, totais por anúncio, testes em andamento e o Clarity. As mudanças
+// feitas na campanha (operacoes_meta, que o RLS só mostra a gestor) vêm pelo servidor: viram marcos com rótulo,
+// sem dado pessoal, e quem só lê também precisa ver o que mudou.
 
 const JANELA_DIAS = 30;
 
@@ -43,7 +47,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
   const inicio = new Date(Date.now() - JANELA_DIAS * 86_400_000).toISOString();
   const deDia = diaNoFuso(inicio, org.fuso);
 
-  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }] = await Promise.all([
+  const [{ data: midia }, { data: porAnuncio }, { data: leads }, { data: coletas }, { count: conexoesClarity }, { data: ops }, { data: lidos }] = await Promise.all([
     supabase
       .from("meta_campanha_dia")
       .select("dia, gasto, impressoes, frequencia, cliques_link, visualizacoes_pagina, leads, sincronizado_em")
@@ -51,7 +55,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
       .eq("campaign_id", campanhaId)
       .gte("dia", deDia)
       .order("dia"),
-    supabase.from("meta_anuncio_dia").select("ad_id, ad_name, gasto, impressoes, leads").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).gte("dia", deDia),
+    supabase.from("meta_anuncio_dia").select("dia, ad_id, ad_name, gasto, impressoes, leads").eq("organizacao_id", org.id).eq("campaign_id", campanhaId).gte("dia", deDia),
     supabase
       .from("leads")
       .select("ad_id, criado_em, teste_iniciado_em, teste_cancelado_em, primeiro_pagamento_em")
@@ -68,6 +72,15 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
       .gte("dia", deDia)
       .order("dia"),
     supabase.from("conexoes").select("id", { count: "exact", head: true }).eq("organizacao_id", org.id).eq("tipo", "clarity").eq("status", "ativa"),
+    criarClienteAdmin()
+      .from("operacoes_meta")
+      .select("criado_em, caminho, parametros, status_http, resposta, usuario_id")
+      .eq("organizacao_id", org.id)
+      .eq("meta_campaign_id", campanhaId)
+      .eq("validacao", false)
+      .gte("criado_em", inicio)
+      .order("criado_em"),
+    supabase.from("meta_anuncios").select("ad_id, nome, adset_id, adset_name").eq("organizacao_id", org.id).eq("campaign_id", campanhaId),
   ]);
 
   // Mídia por dia (somando contas) + leads e testes pelo dia do cadastro.
@@ -115,6 +128,21 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     if (l.teste_iniciado_em) a.testes += 1;
   }
 
+  // Marcos: cada mudança feita na campanha, com o antes e depois (gasto por anúncio e cadastros por dia).
+  const gastos: GastoAnuncioDia[] = (porAnuncio ?? []).map((m) => ({ dia: m.dia as string, ad_id: m.ad_id, gasto: n(m.gasto) }));
+  const resultados = [...dias.values()].map((d) => ({ dia: d.dia, gasto: d.gasto, leads: d.leads }));
+  const nomesAnuncios = new Map<string, string>();
+  const nomesConjuntos = new Map<string, string>();
+  for (const a of lidos ?? []) {
+    nomesAnuncios.set(a.ad_id, a.nome ?? a.ad_id);
+    if (a.adset_id) nomesConjuntos.set(a.adset_id, a.adset_name ?? a.adset_id);
+  }
+  for (const a of anuncios.values()) if (!nomesAnuncios.has(a.ad_id)) nomesAnuncios.set(a.ad_id, a.nome);
+  const marcos = marcosDeOperacoes((ops ?? []) as OperacaoMeta[], { campanhaId, anuncios: nomesAnuncios, conjuntos: nomesConjuntos }, org.fuso, org.moeda).map((m) => ({
+    ...m,
+    efeito: efeitoDoMarco(m, gastos, resultados, hoje),
+  }));
+
   const testesAtivos = (leads ?? []).filter((l) => l.teste_iniciado_em && !l.teste_cancelado_em && !l.primeiro_pagamento_em).map((l) => l.teste_iniciado_em as string);
   const vendas = (leads ?? []).filter((l) => l.primeiro_pagamento_em).length;
   const clarity = ((coletas ?? []) as unknown as Array<{ dia: string; clarity_metricas: Array<{ metrica: string; valores: Record<string, unknown> }> }>).map((c) =>
@@ -133,6 +161,7 @@ export async function carregarLeitura(supabase: SupabaseClient, org: Org, campan
     vendas,
     clarityConectado: !!conexoesClarity,
     clarity,
+    marcos,
   });
 }
 

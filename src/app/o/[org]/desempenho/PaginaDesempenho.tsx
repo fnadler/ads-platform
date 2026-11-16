@@ -87,6 +87,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
   const acAnterior = acumulado(anteriores);
   const pontos: PontoComparacao[] = atuais.map((x, i) => ({
     rotulo: rotuloDia(x.dia),
+    dia: x.dia,
     atual: acAtual[i],
     anterior: acAnterior[i] ?? 0,
     rotuloAnterior: anteriores[i] ? rotuloDia(anteriores[i].dia) : "",

@@ -8,6 +8,8 @@ import { useState } from "react";
 
 export interface PontoComparacao {
   rotulo: string; // "seg 03/11"
+  /** Dia do ponto (AAAA-MM-DD), para casar com os marcos. */
+  dia?: string;
   atual: number; // acumulado no dia
   anterior: number;
   rotuloAnterior: string;
@@ -17,7 +19,13 @@ const L = 640;
 const A = 220;
 const M = { topo: 16, dir: 92, base: 28, esq: 36 };
 
-export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]; titulo: string }) {
+/** Mudança feita na campanha nesse dia (pausa, verba…): vira uma marca vertical no gráfico. */
+export interface MarcoGrafico {
+  dia: string;
+  rotulo: string;
+}
+
+export function GraficoAcumulado({ pontos, titulo, marcos = [] }: { pontos: PontoComparacao[]; titulo: string; marcos?: MarcoGrafico[] }) {
   const [foco, setFoco] = useState<number | null>(null);
   const max = Math.max(1, ...pontos.flatMap((p) => [p.atual, p.anterior]));
   const passo = Math.pow(10, Math.floor(Math.log10(max)));
@@ -41,6 +49,13 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
     rotulosFinais[baixo].y = meio + 14;
   }
   const p = foco !== null ? pontos[foco] : null;
+  // Marcos que caem nos dias do gráfico, agrupados por dia.
+  const marcasDia = new Map<number, string[]>();
+  for (const m of marcos) {
+    const i = pontos.findIndex((pt) => pt.dia === m.dia);
+    if (i >= 0) marcasDia.set(i, [...(marcasDia.get(i) ?? []), m.rotulo]);
+  }
+  const mudancasNoFoco = foco !== null ? marcasDia.get(foco) : undefined;
 
   return (
     <figure className="flex flex-col gap-2">
@@ -69,6 +84,13 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
             <text key={pt.rotulo} x={x(i)} y={A - 8} textAnchor="middle" className="fill-ink-3 text-[11px]">
               {pt.rotulo}
             </text>
+          ))}
+          {[...marcasDia].map(([i, rotulos]) => (
+            <g key={`marco-${i}`}>
+              <title>{rotulos.join(" · ")}</title>
+              <line x1={x(i)} x2={x(i)} y1={M.topo} y2={M.topo + altura} stroke="var(--color-warn)" strokeWidth={1.25} strokeDasharray="2 3" />
+              <circle cx={x(i)} cy={M.topo} r={4.5} fill="var(--color-warn)" stroke="var(--color-surface)" strokeWidth={1.5} />
+            </g>
           ))}
           {foco !== null && <line x1={x(foco)} x2={x(foco)} y1={M.topo} y2={M.topo + altura} stroke="var(--color-ink-3)" strokeWidth={1} />}
           {ultimo >= 0 && <path d={`${caminho("atual")} L${x(ultimo).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`} fill="var(--color-accent-soft)" opacity={0.7} />}
@@ -111,6 +133,11 @@ export function GraficoAcumulado({ pontos, titulo }: { pontos: PontoComparacao[]
             <div className="flex items-center gap-1.5 text-ink-2">
               <span className="inline-block w-3 border-t-2 border-dashed border-prev" /> {p.rotuloAnterior}: <strong className="text-ink">{p.anterior.toLocaleString("pt-BR")}</strong>
             </div>
+            {mudancasNoFoco?.map((r) => (
+              <div key={r} className="mt-1 flex items-center gap-1.5 text-warn">
+                <span className="inline-block size-2 rounded-full bg-warn" /> {r}
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ContextoAcoes } from "@/app/o/[org]/desempenho/carregar";
-import { moeda as formatarMoeda } from "@/lib/formato";
+import { moeda as formatarMoeda, pct } from "@/lib/formato";
 import type { AcaoExecutavel } from "@/lib/leitura/modelo";
 import { ajustarVerba, pausarAnuncio, reativarAnuncio, testarAnuncios } from "@/lib/publicacao/acoesCampanha";
 import { nomeConjuntoTeste, verbaSugeridaTeste } from "@/lib/publicacao/ajustes";
@@ -213,6 +213,44 @@ function FormTestar({ acao, ctx, fechar }: { acao: Extract<AcaoTela, { tipo: "te
 
 // ───────────────────────────── Pausar / reativar ─────────────────────────────
 
+/**
+ * Para onde vai a verba ao pausar: os anúncios que continuam, com a fatia que a Meta dá a cada um hoje e o
+ * resultado de cada um (venda, se já houver; senão teste; senão cadastro). A Meta redistribui como quiser —
+ * no GN, pausar um anúncio quase sem gasto levou a verba do único que vendia para um que não vendia.
+ */
+function ParaOndeVai({ anuncio, ctx }: { anuncio: string; ctx: ContextoAcoes }) {
+  const outros = ctx.anuncios.filter((x) => x.id !== anuncio && x.ativo).sort((a, b) => b.fatiaRecente - a.fatiaRecente);
+  if (!outros.length) return null;
+  const medida = ctx.anuncios.some((x) => x.vendas > 0) ? "vendas" : ctx.anuncios.some((x) => x.testes > 0) ? "testes" : "leads";
+  const unidade = { vendas: "venda", testes: "teste", leads: "cadastro" }[medida];
+  const este = ctx.anuncios.find((x) => x.id === anuncio);
+  const melhor = [...ctx.anuncios].filter((x) => x[medida] > 0).sort((a, b) => a.gasto / a[medida] - b.gasto / b[medida])[0];
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-4 text-sm">
+      <strong className="text-ink">Para onde a verba vai</strong>
+      <p className="text-ink-2">
+        A Meta redistribui a verba sozinha entre os anúncios que continuam, e nem sempre para o melhor. Hoje ela divide assim:
+      </p>
+      <ul className="flex flex-col gap-1">
+        {outros.map((x) => (
+          <li key={x.id} className="flex flex-wrap justify-between gap-x-3 [overflow-wrap:anywhere]">
+            <span className="text-ink">“{x.nome}”</span>
+            <span className="num text-ink-2">
+              {pct(x.fatiaRecente, 0)} da verba · {x[medida] ? `${formatarMoeda(x.gasto / x[medida], ctx.moeda)} por ${unidade}` : `nenhum ${unidade} ainda`}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {este && melhor?.id === este.id && (
+        <p className="text-warn">
+          <strong>Atenção:</strong> “{este.nome}” é o anúncio com o menor custo por {unidade} da campanha.
+        </p>
+      )}
+      <p className="text-xs text-ink-3">Depois de pausar, acompanhe em Resumo › O que mudou como a verba ficou nos dias seguintes.</p>
+    </div>
+  );
+}
+
 function FormAnuncio({ anuncio, pausar, ctx, fechar }: { anuncio: string; pausar?: boolean; ctx: ContextoAcoes; fechar: () => void }) {
   const [estado, enviar, enviando] = useActionState(pausar ? pausarAnuncio : reativarAnuncio, null);
   const a = ctx.anuncios.find((x) => x.id === anuncio);
@@ -235,6 +273,7 @@ function FormAnuncio({ anuncio, pausar, ctx, fechar }: { anuncio: string; pausar
             : [`“${a?.nome ?? anuncio}” volta a aparecer e a disputar a verba com os outros anúncios.`]
         }
       />
+      {pausar && <ParaOndeVai anuncio={anuncio} ctx={ctx} />}
       <Retorno estado={estado} fechar={fechar} />
       <div className="flex flex-wrap gap-2">
         <Botao type="submit" variante={pausar ? "perigo" : "peso"} disabled={enviando}>

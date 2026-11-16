@@ -330,7 +330,64 @@ function AbaGeral(d: DadosDetalhe) {
       ) : (
         <Aviso tom="ok">A campanha está rodando sem nada fora do normal.</Aviso>
       )}
+
+      <OQueMudou d={d} />
     </>
+  );
+}
+
+/**
+ * "O que mudou": as mudanças feitas na campanha (pausas, verba, testes), a mais recente primeiro, cada uma
+ * com o antes e depois — até 3 dias completos de cada lado. Mexer na campanha muda para onde a Meta manda a
+ * verba; aqui a pessoa vê o efeito, em vez de descobrir semanas depois.
+ */
+function OQueMudou({ d }: { d: DadosDetalhe }) {
+  const marcos = [...d.leitura.marcos].filter((m) => m.tipo !== "criada").reverse();
+  if (!marcos.length) return null;
+  const nome = new Map(d.linhas.map((l) => [l.ad_id, l.ad_name ?? l.ad_id]));
+  const porDia = (l: { dias: number; leads: number }) => (l.dias ? l.leads / l.dias : null);
+  const custo = (l: { gasto: number; leads: number }) => (l.leads ? l.gasto / l.leads : null);
+  const f = (v: number | null, fmt: (x: number) => string) => (v === null ? "—" : fmt(v));
+  return (
+    <Secao titulo="O que mudou">
+      <p className="-mt-1 max-w-3xl text-sm text-ink-2">
+        Cada mudança na campanha faz a Meta redistribuir a verba entre os anúncios, e nem sempre para o melhor. Aqui ficam as mudanças dos últimos 30 dias, com até 3 dias
+        antes e 3 depois de cada uma.
+      </p>
+      <ol className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
+        {marcos.map((m) => {
+          const { antes, depois, ganhou, perdeu } = m.efeito;
+          return (
+            <li key={m.em} className="flex flex-col gap-1.5 px-5 py-4">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span className="num text-sm font-semibold text-ink">{ddmm(m.dia)}</span>
+                <span className="font-medium text-ink [overflow-wrap:anywhere]">{m.rotulo}</span>
+              </div>
+              {depois.dias ? (
+                <div className="flex flex-col gap-1 text-sm text-ink-2">
+                  <span>
+                    Cadastros por dia: {f(porDia(antes), (v) => decimal(v, 1))} → <strong className="text-ink">{f(porDia(depois), (v) => decimal(v, 1))}</strong> · custo por
+                    cadastro: {f(custo(antes), (v) => moeda(v, d.moeda))} → <strong className="text-ink">{f(custo(depois), (v) => moeda(v, d.moeda))}</strong>
+                  </span>
+                  {(ganhou || perdeu) && (
+                    <span className="[overflow-wrap:anywhere]">
+                      Verba:{" "}
+                      {[ganhou, perdeu]
+                        .filter((x): x is NonNullable<typeof x> => !!x && Math.abs(x.para - x.de) >= 0.05)
+                        .map((x) => `“${nome.get(x.adId) ?? x.adId}” ${pct(x.de, 0)} → ${pct(x.para, 0)}`)
+                        .join(" · ") || "sem mudança relevante na divisão"}
+                    </span>
+                  )}
+                  {depois.dias < 3 && <span className="text-xs text-ink-3">Comparação parcial: {depois.dias === 1 ? "1 dia completo" : `${depois.dias} dias completos`} depois.</span>}
+                </div>
+              ) : (
+                <span className="text-sm text-ink-3">Ainda sem dia completo depois desta mudança.</span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </Secao>
   );
 }
 
@@ -910,7 +967,10 @@ function AbaVendas(d: DadosDetalhe) {
 
       {!direta && (
         <Cartao>
-          <GraficoAcumulado pontos={d.pontos} titulo={`${d.usarMeta ? "Cadastros (Meta)" : "Cadastros (sistema)"} acumulados: últimos 7 dias contra os 7 anteriores`} />
+          <GraficoAcumulado
+            pontos={d.pontos}
+            marcos={d.leitura.marcos.filter((m) => m.tipo !== "criada").map((m) => ({ dia: m.dia, rotulo: m.rotulo }))}
+            titulo={`${d.usarMeta ? "Cadastros (Meta)" : "Cadastros (sistema)"} acumulados: últimos 7 dias contra os 7 anteriores`} />
           {d.ultimoPontoEmAndamento && (
             <p className="mt-2 text-xs text-ink-3">O último ponto é hoje, ainda em andamento: a curva achata até o dia terminar e a Meta ser lida de novo.</p>
           )}

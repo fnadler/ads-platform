@@ -183,3 +183,50 @@ describe("lerCampanha — outros cenários", () => {
     expect(a["tendencia-amostra"].tom).toBe("aguardar");
   });
 });
+
+describe("lerCampanha — verba que mudou de anúncio (caso GN, 08/11)", () => {
+  // Leitura de 12/11: B Gaveta trouxe 19 testes com R$ 340; D Como Vender, 3 testes com R$ 160.
+  const marco = {
+    em: "2026-11-09T01:30:16Z",
+    dia: "2026-11-08",
+    tipo: "pausa_anuncio" as const,
+    rotulo: "Pausou o anúncio “A1 | C Digitando”",
+    adId: "c",
+    usuarioId: null,
+    efeito: {
+      antes: { dias: 3, gasto: 142.85, leads: 32, fatias: [] },
+      depois: { dias: 3, gasto: 130.09, leads: 36, fatias: [] },
+      ganhou: { adId: "d", de: 0.2, para: 0.58 },
+      perdeu: { adId: "b", de: 0.73, para: 0.35 },
+    },
+  };
+  const base: EntradaLeitura = {
+    ...GN,
+    hoje: "2026-11-12",
+    anuncios: [
+      { ad_id: "a", nome: "A1 | A repetida", gasto: 25, impressoes: 2000, leads_meta: 12, leads: 8, testes: 2 },
+      { ad_id: "b", nome: "A1 | B Gaveta", gasto: 340, impressoes: 24000, leads_meta: 170, leads: 120, testes: 19 },
+      { ad_id: "c", nome: "A1 | C Digitando", gasto: 6.9, impressoes: 526, leads_meta: 1, leads: 2, testes: 0 },
+      { ad_id: "d", nome: "A1 | D Como Vender", gasto: 160, impressoes: 12000, leads_meta: 70, leads: 45, testes: 3 },
+    ],
+    marcos: [marco],
+  };
+
+  it("avisa que a pausa levou a verba para o anúncio pior, com o anúncio a socorrer", () => {
+    const a = lerCampanha(base).achados.find((x) => x.id.startsWith("redistribuicao"));
+    expect(a?.titulo).toBe("Depois que você pausou “A1 | C Digitando” em 08/11, a Meta passou a gastar 58% em “A1 | D Como Vender”");
+    expect(a?.acaoExecutavel).toEqual({ tipo: "testar_anuncios", anuncios: ["b"] });
+    expect(lerCampanha(base).marcos).toHaveLength(1);
+  });
+
+  it("não acusa quando a verba foi para um anúncio tão bom quanto", () => {
+    const parelho = { ...base, anuncios: base.anuncios.map((x) => (x.ad_id === "d" ? { ...x, testes: 18 } : x)) };
+    expect(lerCampanha(parelho).achados.some((x) => x.id.startsWith("redistribuicao"))).toBe(false);
+  });
+
+  it("espera 2 dias depois da mudança e esquece mudanças de mais de 14 dias", () => {
+    const cedo = { ...base, marcos: [{ ...marco, efeito: { ...marco.efeito, depois: { ...marco.efeito.depois, dias: 1 } } }] };
+    expect(lerCampanha(cedo).achados.some((x) => x.id.startsWith("redistribuicao"))).toBe(false);
+    expect(lerCampanha({ ...base, hoje: "2026-11-30" }).achados.some((x) => x.id.startsWith("redistribuicao"))).toBe(false);
+  });
+});

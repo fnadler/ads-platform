@@ -15,6 +15,7 @@
 import { zProporcoes, zTaxas, probNenhum, significativo } from "./estatistica";
 import { moeda, pct, decimal, inteiro } from "@/lib/formato";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import type { Efeito, Marco } from "./marcos";
 
 export interface DiaCampanha {
   dia: string; // AAAA-MM-DD no fuso da organização
@@ -65,7 +66,11 @@ export interface EntradaLeitura {
   /** O Clarity está conectado (mesmo que ainda sem dias coletados). */
   clarityConectado?: boolean;
   clarity: DiaClarity[];
+  /** Mudanças feitas na campanha (pausas, verba…), com o antes e depois de cada uma. */
+  marcos?: MarcoComEfeito[];
 }
+
+export type MarcoComEfeito = Marco & { efeito: Efeito };
 
 export type TomAchado = "agir" | "observar" | "aguardar" | "ok";
 
@@ -129,6 +134,8 @@ export interface Leitura {
   /** Os dias do Clarity da janela, para a aba da página. */
   clarity: DiaClarity[];
   clarityConectado: boolean;
+  /** Mudanças feitas na campanha, para a linha do tempo ("O que mudou") e as marcas no gráfico. */
+  marcos: MarcoComEfeito[];
 }
 
 const ORDEM: Record<TomAchado, number> = { agir: 0, observar: 1, aguardar: 2, ok: 3 };
@@ -482,6 +489,61 @@ function regraConcentracao(e: EntradaLeitura, completos: DiaCampanha[]): Achado 
   };
 }
 
+// ───────────────────────────── Verba que mudou de anúncio depois de uma mudança ─────────────────────────────
+
+const GESTO: Partial<Record<Marco["tipo"], (m: Marco, nome: (id: string) => string) => string>> = {
+  pausa_anuncio: (m, nome) => `Depois que você pausou “${nome(m.adId!)}” em ${ddmm(m.dia)}`,
+  retomada_anuncio: (m, nome) => `Depois que você reativou “${nome(m.adId!)}” em ${ddmm(m.dia)}`,
+  verba: (m) => `Depois da mudança de verba em ${ddmm(m.dia)}`,
+  retomada_campanha: (m) => `Depois que a campanha voltou em ${ddmm(m.dia)}`,
+  teste_anuncios: (m) => `Depois do teste de anúncios de ${ddmm(m.dia)}`,
+};
+
+/**
+ * Uma mudança feita na campanha levou a Meta a mover a verba para um anúncio que traz resultado pior.
+ * Caso GN (08/11): pausar um anúncio quase sem gasto fez a verba sair de “B Gaveta” (o único que vendia) para
+ * “D Como Vender”. A comparação de qualidade usa a janela toda: custo por teste no funil com teste, senão por
+ * cadastro que chegou ao sistema.
+ */
+function regraRedistribuicao(e: EntradaLeitura): Achado[] {
+  const porId = new Map(e.anuncios.map((a) => [a.ad_id, a]));
+  const nome = (id: string) => porId.get(id)?.nome ?? id;
+  const comTeste = e.funil === "cadastro_teste_venda" && e.anuncios.some((a) => a.testes > 0);
+  const custo = (id: string) => {
+    const a = porId.get(id);
+    const n = a ? (comTeste ? a.testes : a.leads) : 0;
+    return a && n ? a.gasto / n : null;
+  };
+  const unidade = comTeste ? "teste grátis" : "cadastro";
+  const limite = somaDias(e.hoje, -14);
+  return (e.marcos ?? []).flatMap((m): Achado[] => {
+    const gesto = GESTO[m.tipo];
+    const { ganhou, perdeu, depois } = m.efeito;
+    if (!gesto || m.dia < limite || depois.dias < 2 || !ganhou || !perdeu || ganhou.para - ganhou.de < 0.2) return [];
+    const cg = custo(ganhou.adId);
+    const cp = custo(perdeu.adId);
+    const g = porId.get(ganhou.adId);
+    const p = porId.get(perdeu.adId);
+    // Pior: custa ao menos 25% mais por resultado, ou não trouxe nenhum enquanto o outro trouxe.
+    const pior = cg !== null && cp !== null ? cg >= cp * 1.25 : cg === null && cp !== null && (g?.gasto ?? 0) > 0 && !!p;
+    if (!pior) return [];
+    const quanto = (c: number | null) => (c === null ? `nenhum ${unidade}` : `${moeda(c, e.moeda)} por ${unidade}`);
+    return [
+      {
+        id: `redistribuicao-${m.em}`,
+        tom: "observar",
+        area: "anuncios",
+        titulo: `${gesto(m, nome)}, a Meta passou a gastar ${pct(ganhou.para, 0)} em “${nome(ganhou.adId)}”`,
+        destaque: { de: pct(ganhou.de, 0), para: pct(ganhou.para, 0), rotulo: `da verba em “${nome(ganhou.adId)}”`, sentido: "pior" },
+        acao: `Devolva a verba a “${nome(perdeu.adId)}”, que traz resultado melhor.`,
+        detalhe: `Nos ${plural(m.efeito.antes.dias, "dia", "dias")} antes, “${nome(perdeu.adId)}” ficava com ${pct(perdeu.de, 0)} da verba; nos ${plural(depois.dias, "dia", "dias")} depois, com ${pct(perdeu.para, 0)}. A Meta redistribui a verba sozinha quando a campanha muda, e nem sempre para o melhor anúncio. Na campanha toda, “${nome(ganhou.adId)}” sai a ${quanto(cg)}; “${nome(perdeu.adId)}”, a ${quanto(cp)}.`,
+        acaoDetalhe: `Dê a “${nome(perdeu.adId)}” verba própria (um teste com verba separada), ou pause “${nome(ganhou.adId)}” para a verba voltar a ele. Daqui para a frente, prefira mexer com a campanha montada desde o início com os anúncios finais.`,
+        acaoExecutavel: { tipo: "testar_anuncios", anuncios: [perdeu.adId] },
+      },
+    ];
+  });
+}
+
 function regraQualidade(e: EntradaLeitura): Achado[] {
   if (e.funil !== "cadastro_teste_venda") return [];
   const leads = e.anuncios.reduce((s, a) => s + a.leads, 0);
@@ -645,6 +707,7 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
     regraRastreio(completos),
     regraTestesRecentes(e),
     ...regraQualidade(e),
+    ...regraRedistribuicao(e),
     ...secundarios,
     regraConcentracao(e, completos),
     regraMaturidade(e),
@@ -652,5 +715,13 @@ export function lerCampanha(e: EntradaLeitura): Leitura {
   ]
     .filter((a): a is Achado => !!a)
     .sort((a, b) => ORDEM[a.tom] - ORDEM[b.tom]);
-  return { achados, diasCompletos: completos.length, ultimoDiaCompleto: ultimo, nota, clarity: e.clarity, clarityConectado: !!e.clarityConectado || e.clarity.length > 0 };
+  return {
+    achados,
+    diasCompletos: completos.length,
+    ultimoDiaCompleto: ultimo,
+    nota,
+    clarity: e.clarity,
+    clarityConectado: !!e.clarityConectado || e.clarity.length > 0,
+    marcos: e.marcos ?? [],
+  };
 }
