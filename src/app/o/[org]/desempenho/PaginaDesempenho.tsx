@@ -8,6 +8,7 @@ import { Aviso, BotaoLink, Cartao, Etiqueta, Indicador, Indicadores, Tabela, Tit
 import { exigirOrganizacao, temPapel } from "@/lib/auth/sessao";
 import { campanhaMontada } from "@/lib/campanhas/lista";
 import { decimal, inicioDoDia, inteiro, moeda, pct, razao } from "@/lib/formato";
+import { carregarBalanco } from "@/lib/balanco/carregar";
 import { carregarLeitura } from "@/lib/leitura/carregar";
 import { carregarRastreio } from "@/lib/rastreio/situacao";
 import { comDias, diaNoFuso, lerDias } from "@/lib/periodo";
@@ -110,7 +111,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
     return `${rotaDesempenho(slug, tudo.campanha ? String(tudo.campanha) : null)}${q.size ? `?${q}` : ""}`;
   };
   // Só a aba aberta carrega o que é dela: as peças dos anúncios ou o Clarity das visitas da campanha.
-  const [pecas, experiencia, velocidade, acoes, leadsVendas] = await Promise.all([
+  const [pecas, experiencia, velocidade, acoes, leadsVendas, balanco] = await Promise.all([
     campanha && aba === "anuncios"
       ? carregarPecas(
           supabase,
@@ -130,6 +131,7 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
         })
       : undefined,
     campanha && aba === "vendas" ? carregarLeadsVendas(supabase, org.id, { campanha, desde: inicioDoDia(de, org.fuso) }) : null,
+    campanha && aba === "balanco" && leitura ? carregarBalanco(supabase, org, campanha, leitura) : null,
   ]);
   // Sem dados no período, o nome vem da leitura dos anúncios; a ponte leva à montagem, se a campanha nasceu aqui.
   const [nomeLido, montadaId] = campanha
@@ -237,6 +239,17 @@ export async function PaginaDesempenho({ slug, busca, campanha }: { slug: string
           velocidade={velocidade}
           acoes={acoes}
           leadsVendas={leadsVendas}
+          balanco={balanco}
+          rotasGerenciar={
+            gestor
+              ? {
+                  nova_campanha: rotaOrg(slug, "/campanhas"),
+                  publicos: rotaOrg(slug, "/publicos"),
+                  rastreio: rotaOrg(slug, `/rastreio/${campanha}`),
+                  configuracoes: rotaOrg(slug, "/configuracoes"),
+                }
+              : null
+          }
           fuso={org.fuso}
           rotaVendas={comDias(`${rotaOrg(slug, "/vendas")}?campanha=${campanha}`, dias)}
         />

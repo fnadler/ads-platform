@@ -174,6 +174,7 @@ export default async function Campanha({ params }: PageProps<"/o/[org]/campanhas
             veiculacao={veiculacaoPelosAnuncios(statusLidos)}
             publicacaoAtiva={publicacao?.status === "ativa"}
             rotaConfiguracoes={rotaOrg(slug, "/configuracoes")}
+            rotaBalanco={`${rotaDesempenho(slug, c.meta_campaign_id)}?aba=balanco`}
           />
         )}
 

@@ -81,6 +81,7 @@ export async function CampanhaExterna({ slug, metaId }: { slug: string; metaId: 
           veiculacao={veiculacaoPelosAnuncios(status)}
           publicacaoAtiva={conexao?.status === "ativa"}
           rotaConfiguracoes={rotaOrg(slug, "/configuracoes")}
+            rotaBalanco={`${rotaDesempenho(slug, metaId)}?aba=balanco`}
         />
 
         <Cartao titulo="Conjuntos e anúncios" descricao="Como a última leitura da Meta encontrou cada anúncio." rente>

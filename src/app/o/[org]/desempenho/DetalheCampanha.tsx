@@ -15,6 +15,7 @@ import { Aviso, BotaoLink, Cartao, corAnuncio, Indicador, Indicadores, Tabela, V
 import { decimal, inteiro, moeda, pct, razao } from "@/lib/formato";
 import type { Achado, AreaAchado, Etapa, Leitura, TomAchado } from "@/lib/leitura/modelo";
 import type { Funil } from "@/lib/vendas/plataformas/catalogo";
+import type { Balanco, Recomendacao } from "@/lib/balanco/modelo";
 import type { LeadsVendas } from "@/lib/vendas/lista";
 import { TabelaLeads, TabelaVendas } from "@/components/ListaLeadsVendas";
 import { Termo } from "@/components/Termo";
@@ -25,14 +26,15 @@ import { celulasFunil, colunasFunil, destaque, roas, rotuloCancelados } from "./
 // que importam naquela parte, as sugestões da leitura num carrossel de cartões compactos e, fechado, todos
 // os números para quem quer conferir. A visão geral junta o caminho inteiro e as sugestões de todas.
 
-export type Aba = "geral" | Exclude<AreaAchado, "geral">;
-export const ABAS: Aba[] = ["geral", "anuncios", "pagina", "vendas"];
+export type Aba = "geral" | Exclude<AreaAchado, "geral"> | "balanco";
+export const ABAS: Aba[] = ["geral", "anuncios", "pagina", "vendas", "balanco"];
 const rotuloAba = (aba: Aba, funil: Funil) =>
   ({
     geral: "Visão geral",
     anuncios: "Anúncios",
     pagina: "Página",
     vendas: funil === "venda_direta" ? "Vendas" : "Cadastros e vendas",
+    balanco: "Balanço",
   })[aba];
 
 const precisaAtencao = (a: Achado) => a.tom === "agir" || a.tom === "observar";
@@ -68,6 +70,10 @@ export interface DadosDetalhe {
   fuso: string;
   /** Cadastros e vendas (organização) já filtrado nesta campanha. */
   rotaVendas: string;
+  /** Balanço da campanha inteira (só na aba Balanço). */
+  balanco?: Balanco | null;
+  /** Para onde levam as recomendações do balanço (só para gestor; quem só lê não tem Gerenciar). */
+  rotasGerenciar?: Record<NonNullable<Recomendacao["link"]>, string> | null;
 }
 
 export function DetalheCampanha(d: DadosDetalhe) {
@@ -77,7 +83,7 @@ export function DetalheCampanha(d: DadosDetalhe) {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
       <nav aria-label="Partes da campanha" className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1">
         {ABAS.map((aba) => {
-          const daAba = aba === "geral" ? [] : achados.filter((a) => a.area === aba && precisaAtencao(a));
+          const daAba = aba === "geral" || aba === "balanco" ? [] : achados.filter((a) => a.area === aba && precisaAtencao(a));
           const ativa = aba === d.aba;
           return (
             <Link
@@ -103,6 +109,7 @@ export function DetalheCampanha(d: DadosDetalhe) {
       {d.aba === "anuncios" && <AbaAnuncios {...d} />}
       {d.aba === "pagina" && <AbaPagina {...d} />}
       {d.aba === "vendas" && <AbaVendas {...d} />}
+      {d.aba === "balanco" && <AbaBalanco {...d} />}
     </div>
   );
 }
@@ -1059,5 +1066,115 @@ function ListasDaCampanha({ d, lv }: { d: DadosDetalhe; lv: LeadsVendas }) {
         )}
       </Cartao>
     </>
+  );
+}
+
+// ───────────────────────────── Balanço ─────────────────────────────
+
+const ROTULO_LINK: Record<NonNullable<Recomendacao["link"]>, string> = {
+  nova_campanha: "Montar a próxima campanha",
+  publicos: "Criar o público",
+  rastreio: "Ver o rastreio",
+  configuracoes: "Abrir Configurações",
+};
+
+/**
+ * Balanço da campanha inteira (não do período escolhido): o resultado em frases, o caminho do anúncio à venda
+ * com onde vazou, o que funcionou e o que não, o que ainda está em aberto e as recomendações para a próxima etapa.
+ */
+function AbaBalanco(d: DadosDetalhe) {
+  const b = d.balanco;
+  if (!b) return <Vazio titulo="Ainda não dá para fazer o balanço">A campanha ainda não teve gasto.</Vazio>;
+  return (
+    <>
+      <section className="flex flex-col gap-2 rounded-lg bg-chrome p-6 text-chrome-ink" aria-label="Resultado da campanha">
+        <span className="sobrancelha !text-chrome-ink-2">
+          {b.situacao}
+          {b.periodo ? ` · ${b.periodo}` : ""}
+        </span>
+        <p className="text-xl leading-snug tracking-[-0.01em] sm:text-2xl">{b.frase}</p>
+        <p className="text-sm text-chrome-ink-2">A campanha inteira, do primeiro ao último dia com gasto (o período escolhido acima não muda este balanço).</p>
+      </section>
+
+      <Indicadores className={`grid-cols-2 ${b.numeros.length >= 5 ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+        {b.numeros.map((n) => (
+          <Indicador key={n.rotulo} rotulo={n.rotulo} valor={n.valor} detalhe={n.detalhe} />
+        ))}
+      </Indicadores>
+
+      <Secao titulo="Do anúncio à venda">
+        <ol className="flex flex-col divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface">
+          {b.funil.map((e) => (
+            <li key={e.rotulo} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-3">
+              <div className="min-w-0">
+                <div className="font-medium text-ink">{e.rotulo}</div>
+                <div className="text-sm text-ink-2">{e.taxa}</div>
+              </div>
+              {e.valor === null ? (
+                <span className="text-xs text-ink-3">sem dados</span>
+              ) : e.vazou ? (
+                <span className="rounded-full bg-err-soft px-2.5 py-0.5 text-xs font-semibold text-err">Vazou aqui</span>
+              ) : (
+                <span className="rounded-full bg-ok-soft px-2.5 py-0.5 text-xs font-semibold text-ok">Bom</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </Secao>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <Secao titulo="O que funcionou">
+          <ListaBalanco itens={b.funcionou} vazio="Nada se destacou ainda." />
+        </Secao>
+        <Secao titulo="O que não funcionou">
+          <ListaBalanco itens={b.naoFuncionou} vazio="Nenhum ponto fraco claro." />
+        </Secao>
+      </div>
+
+      {b.emAberto.length > 0 && (
+        <Secao titulo="Ainda em aberto">
+          {b.emAberto.map((t) => (
+            <Aviso key={t}>{t}</Aviso>
+          ))}
+        </Secao>
+      )}
+
+      {b.recomendacoes.length > 0 && (
+        <Secao titulo="Para a próxima etapa">
+          <ol className="flex flex-col gap-3">
+            {b.recomendacoes.map((r, i) => (
+              <li key={r.titulo} className="flex gap-3 rounded-lg border border-line bg-surface p-4">
+                <span className="num-display grid size-8 flex-none place-items-center rounded-full bg-accent-soft text-sm text-accent-text">{i + 1}</span>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <strong className="text-ink [overflow-wrap:anywhere]">{r.titulo}</strong>
+                  <p className="text-sm text-ink-2 [overflow-wrap:anywhere]">{r.texto}</p>
+                  {r.link && d.rotasGerenciar && (
+                    <Link href={d.rotasGerenciar[r.link]} className="inline-flex items-center gap-1 self-start text-sm font-medium text-accent-text">
+                      {ROTULO_LINK[r.link]} <IconeSeta tamanho={14} />
+                    </Link>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Secao>
+      )}
+
+      <OQueMudou d={d} />
+    </>
+  );
+}
+
+function ListaBalanco({ itens, vazio }: { itens: Balanco["funcionou"]; vazio: string }) {
+  if (!itens.length) return <p className="text-sm text-ink-3">{vazio}</p>;
+  return (
+    <ul className="flex flex-col gap-2">
+      {itens.map((i) => (
+        <li key={i.texto} className="flex gap-2.5 text-sm text-ink-2 [overflow-wrap:anywhere]">
+          <span aria-hidden="true" className={`mt-1.5 size-2 flex-none rounded-full ${i.tom === "bom" ? "bg-ok" : i.tom === "ruim" ? "bg-err" : "bg-line-strong"}`} />
+          {i.texto}
+        </li>
+      ))}
+    </ul>
   );
 }

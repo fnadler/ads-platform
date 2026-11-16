@@ -57,6 +57,7 @@ export async function CartaoVeiculacao({
   veiculacao,
   publicacaoAtiva,
   rotaConfiguracoes,
+  rotaBalanco,
 }: {
   supabase: SupabaseClient;
   orgId: string;
@@ -66,6 +67,8 @@ export async function CartaoVeiculacao({
   /** Conexão de publicação (ads_management) ligada: sem ela, não dá para escrever na Meta. */
   publicacaoAtiva: boolean;
   rotaConfiguracoes: string;
+  /** Balanço da campanha (Analisar › Desempenho › Balanço), oferecido quando ela parou. */
+  rotaBalanco: string;
 }) {
   const historico = await carregarHistorico(supabase, orgId, metaCampaignId);
   const campos = (
@@ -107,6 +110,12 @@ export async function CartaoVeiculacao({
             <Campo rotulo="Digite ATIVAR para confirmar" name="confirmacao" autoComplete="off" required />
           </Formulario>
         ) : null}
+
+        {(veiculacao === "pausada" || veiculacao === "encerrada") && (
+          <Link href={rotaBalanco} className="self-start font-medium text-accent-text">
+            Ver o balanço da campanha: o que funcionou e o que fazer na próxima etapa
+          </Link>
+        )}
 
         {historico.length > 0 && (
           <div>
